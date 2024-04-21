@@ -1,0 +1,10 @@
+project/*
+build/*
+
+*.vcxproj
+*.vcxproj.*
+*.sln
+.vscode/*
+
+CMakeCache.txt
+CmakeFiles/*
