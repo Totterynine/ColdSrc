@@ -7,3 +7,4 @@ set(headers )
 
 add_library(${LIBNAME} SHARED ${sources} ${headers} )
 
+target_link_libraries(${LIBNAME} PRIVATE SDL3::SDL3)

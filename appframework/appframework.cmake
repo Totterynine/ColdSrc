@@ -6,3 +6,5 @@ set(sources ${src_dir}/appframework.cpp ${src_dir}/entry.cpp)
 set(headers ${src_dir}/appframework.h)
 
 add_executable(${LIBNAME} ${sources} ${headers} )
+
+target_link_libraries(${LIBNAME} PRIVATE SDL3::SDL3)
