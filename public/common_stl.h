@@ -6,6 +6,9 @@
 #include <array>
 #include <span>
 #include <unordered_map>
+#include <optional>
+
+#include <concepts>
 
 using String = std::string;
 using StringView = std::string_view;
@@ -22,3 +25,6 @@ using Span = std::span<T>;
 
 template <class K, class T>
 using Dict = std::unordered_map<K, T>;
+
+template<class T>
+using Optional = std::optional<T>;
