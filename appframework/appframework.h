@@ -6,5 +6,11 @@
 class AppFramework
 {
 public:
-    void Execute(const Span<String> args);
+    void Execute(const Span<String> &args);
+
+private:
+
+    String CurrentApp = "";
+
+    IApplication *TheApp = nullptr;
 };

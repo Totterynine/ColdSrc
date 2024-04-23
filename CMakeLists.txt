@@ -25,6 +25,14 @@ link_libraries(glm-header-only)
 
 include(LibraryList.cmake)
 
+foreach(curlib IN LISTS ESSENTIAL_LIST) 
+    include(${curlib}/${curlib}.cmake)
+endforeach()
+
+foreach(curlib IN LISTS ESSENTIAL_LIST) 
+    link_libraries(${curlib})
+endforeach()
+
 foreach(curlib IN LISTS LIBRARY_LIST) 
     include(${curlib}/${curlib}.cmake)
 endforeach()
