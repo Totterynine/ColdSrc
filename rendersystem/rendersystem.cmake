@@ -7,4 +7,4 @@ set(headers )
 
 add_library(${LIBNAME} SHARED ${sources} ${headers} )
 
-target_link_libraries(${LIBNAME} PRIVATE vk-bootstrap::vk-bootstrap GPUOpen::VulkanMemoryAllocator)
+target_link_libraries(${LIBNAME} PRIVATE vk-bootstrap::vk-bootstrap GPUOpen::VulkanMemoryAllocator)set_property(TARGET rendersystem PROPERTY FOLDER "${SLN_FOLDER_PREFIX}ColdSrc")
