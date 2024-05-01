@@ -36,16 +36,16 @@ struct ColorFloat
 class IRenderTarget;
 class IVertexBuffer;
 class IIndexBuffer;
+class IShader;
 
 class IRenderSystem
 {
 public:
-
     // Create the rendering system
     virtual bool Create() = 0;
 
     // Attach the rendering system to a window
-    virtual void AttachWindow( void *window_handle, int w, int h ) = 0;
+    virtual void AttachWindow(void *window_handle, int w, int h) = 0;
 
     // Begin rendering
     virtual void BeginRendering() = 0;
@@ -53,30 +53,34 @@ public:
     // End rendering
     virtual void EndRendering() = 0;
 
-    virtual void SetClearColor( ColorFloat &color ) = 0;
+    virtual void SetClearColor(ColorFloat &color) = 0;
     virtual void ClearColor() = 0;
 
     // Set the render target
     // Set nullptr to clear
-    virtual void SetRenderTarget( IRenderTarget *target ) = 0;
+    virtual void SetRenderTarget(IRenderTarget *target) = 0;
 
     // Set the viewport
-    virtual void SetViewport( Viewport settings ) = 0;
+    virtual void SetViewport(Viewport settings) = 0;
 
     // Set the scissor rectangle
-    virtual void SetScissorRectangle( ScissorRectangle settings ) = 0;
+    virtual void SetScissorRectangle(ScissorRectangle settings) = 0;
+
+    // Set the current shader to render the mesh
+    // Set to nullptr to clear
+    virtual void SetShader(IShader *shader) = 0;
 
     // Set the vertex buffer
-    virtual void SetVertexBuffer( IVertexBuffer *buffer ) = 0;
+    virtual void SetVertexBuffer(IVertexBuffer *buffer) = 0;
 
     // Set the index buffer
-    virtual void SetIndexBuffer( IIndexBuffer *buffer ) = 0;
+    virtual void SetIndexBuffer(IIndexBuffer *buffer) = 0;
 
     // Draw a primitive
-    virtual void DrawPrimitive( int primitive_type, int vertex_count ) = 0;
+    virtual void DrawPrimitive(int primitive_type, int vertex_count) = 0;
 
     // Draw indexed primitives
-    virtual void DrawIndexedPrimitives( int primitive_type, int index_count ) = 0;
+    virtual void DrawIndexedPrimitives(int primitive_type, int index_count) = 0;
 
     // Present the render target to surface
     virtual void Present() = 0;
@@ -85,11 +89,11 @@ public:
     virtual void Destroy() = 0;
 
     // Set the blend state
-    virtual void SetBlendState( BlendState settings ) = 0;
+    virtual void SetBlendState(BlendState settings) = 0;
 
     // Set the depth stencil state
-    virtual void SetDepthStencilState( DepthStencilState settings ) = 0;
+    virtual void SetDepthStencilState(DepthStencilState settings) = 0;
 
     // Set the rasterizer state
-    virtual void SetRasterizerState( RasterizerState settings ) = 0;
+    virtual void SetRasterizerState(RasterizerState settings) = 0;
 };

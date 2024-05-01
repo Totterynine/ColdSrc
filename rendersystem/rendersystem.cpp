@@ -220,6 +220,10 @@ void RenderSystemVulkan::SetScissorRectangle(ScissorRectangle settings)
     Device.Dispatch.cmdSetScissor(CommandBuffers[CurrentFrameIdx], 0, 1, &scissor);
 }
 
+void RenderSystemVulkan::SetShader(IShader *shader)
+{
+}
+
 void RenderSystemVulkan::SetVertexBuffer(IVertexBuffer *buffer)
 {
 }

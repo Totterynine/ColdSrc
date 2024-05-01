@@ -42,6 +42,10 @@ public:
 	// Set the scissor rectangle
 	virtual void SetScissorRectangle(ScissorRectangle settings);
 
+	// Set the current shader to render the mesh
+	// Set to nullptr to clear
+	virtual void SetShader(IShader *shader);
+
 	// Set the vertex buffer
 	virtual void SetVertexBuffer(IVertexBuffer *buffer);
 
