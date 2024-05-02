@@ -122,9 +122,6 @@ void RenderSystemVulkan::BeginRendering()
     render_pass_info.renderArea.offset = {0, 0};
     render_pass_info.renderArea.extent = {CurrentWindow.Width, CurrentWindow.Height};
 
-    VkClearValue clearColor{{{0.0f, 0.0f, 0.0f, 1.0f}}};
-    render_pass_info.clearValueCount = 1;
-    render_pass_info.pClearValues = &clearColor;
     Device.Dispatch.cmdBeginRenderPass(CommandBuffers[CurrentFrameIdx], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 }
 
@@ -336,7 +333,7 @@ bool RenderSystemVulkan::CreateRenderPass()
     VkAttachmentDescription color_attachment = {};
     color_attachment.format = CurrentWindow.SwapChain.image_format;
     color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
