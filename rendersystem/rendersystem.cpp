@@ -117,15 +117,14 @@ void RenderSystemVulkan::BeginRendering()
 
     VkRenderPassBeginInfo render_pass_info = {};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    render_pass_info.renderPass = RenderPass;
-    render_pass_info.framebuffer = Framebuffer.Framebuffers[CurrentImageIdx];
+    render_pass_info.renderPass = Backbuffer.RenderPass;
+    render_pass_info.framebuffer = Backbuffer.Framebuffers[CurrentImageIdx];
     render_pass_info.renderArea.offset = {0, 0};
     render_pass_info.renderArea.extent = {CurrentWindow.Width, CurrentWindow.Height};
 
     VkClearValue clearColor{{{0.0f, 0.0f, 0.0f, 1.0f}}};
     render_pass_info.clearValueCount = 1;
     render_pass_info.pClearValues = &clearColor;
-
     Device.Dispatch.cmdBeginRenderPass(CommandBuffers[CurrentFrameIdx], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 }
 
@@ -138,12 +137,6 @@ void RenderSystemVulkan::EndRendering()
         // std::cout << "failed to record command buffer\n";
         return; // failed to record command buffer!
     }
-
-    if (ImagesInFlight[CurrentImageIdx] != VK_NULL_HANDLE)
-    {
-        Device.Dispatch.waitForFences(1, &ImagesInFlight[CurrentImageIdx], VK_TRUE, UINT64_MAX);
-    }
-    ImagesInFlight[CurrentImageIdx] = FencesInFlight[CurrentFrameIdx];
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -322,12 +315,12 @@ bool RenderSystemVulkan::RecreateSwapchain()
 
     Device.Dispatch.destroyCommandPool(CommandPool, nullptr);
 
-    for (auto framebuffer : Framebuffer.Framebuffers)
+    for (auto framebuffer : Backbuffer.Framebuffers)
     {
         Device.Dispatch.destroyFramebuffer(framebuffer, nullptr);
     }
 
-    CurrentWindow.SwapChain.destroy_image_views(Framebuffer.ImageViews);
+    CurrentWindow.SwapChain.destroy_image_views( Backbuffer.ImageViews);
 
     if (!CreateSwapchain(CurrentWindow.Width, CurrentWindow.Height) &&
         !CreateFramebuffers() &&
@@ -376,7 +369,7 @@ bool RenderSystemVulkan::CreateRenderPass()
     render_pass_info.dependencyCount = 1;
     render_pass_info.pDependencies = &dependency;
 
-    if (Device.Dispatch.createRenderPass(&render_pass_info, nullptr, &RenderPass) != VK_SUCCESS)
+    if (Device.Dispatch.createRenderPass(&render_pass_info, nullptr, &Backbuffer.RenderPass) != VK_SUCCESS)
     {
         // std::cout << "failed to create render pass\n";
         return false; // failed to create render pass!
@@ -386,25 +379,25 @@ bool RenderSystemVulkan::CreateRenderPass()
 
 bool RenderSystemVulkan::CreateFramebuffers()
 {
-    Framebuffer.Images = CurrentWindow.SwapChain.get_images().value();
-    Framebuffer.ImageViews = CurrentWindow.SwapChain.get_image_views().value();
+    Backbuffer.Images = CurrentWindow.SwapChain.get_images().value();
+    Backbuffer.ImageViews = CurrentWindow.SwapChain.get_image_views().value();
 
-    Framebuffer.Framebuffers.resize(Framebuffer.ImageViews.size());
+    Backbuffer.Framebuffers.resize( Backbuffer.ImageViews.size());
 
-    for (size_t i = 0; i < Framebuffer.ImageViews.size(); i++)
+    for (size_t i = 0; i < Backbuffer.ImageViews.size(); i++)
     {
-        VkImageView attachments[] = {Framebuffer.ImageViews[i]};
+        VkImageView attachments[] = { Backbuffer.ImageViews[i]};
 
         VkFramebufferCreateInfo framebuffer_info = {};
         framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebuffer_info.renderPass = RenderPass;
+        framebuffer_info.renderPass = Backbuffer.RenderPass;
         framebuffer_info.attachmentCount = 1;
         framebuffer_info.pAttachments = attachments;
         framebuffer_info.width = CurrentWindow.SwapChain.extent.width;
         framebuffer_info.height = CurrentWindow.SwapChain.extent.height;
         framebuffer_info.layers = 1;
 
-        if (Device.Dispatch.createFramebuffer(&framebuffer_info, nullptr, &Framebuffer.Framebuffers[i]) != VK_SUCCESS)
+        if (Device.Dispatch.createFramebuffer(&framebuffer_info, nullptr, &Backbuffer.Framebuffers[i]) != VK_SUCCESS)
         {
             return false; // failed to create framebuffer
         }
@@ -431,7 +424,7 @@ bool RenderSystemVulkan::CreateCommandPool()
 
 bool RenderSystemVulkan::CreateCommandBuffers()
 {
-    CommandBuffers.resize(Framebuffer.Framebuffers.size());
+    CommandBuffers.resize( Backbuffer.Framebuffers.size());
 
     VkCommandBufferAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;

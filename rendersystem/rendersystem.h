@@ -103,12 +103,15 @@ private:
 	uint32_t CurrentFrameIdx = 0;
 	uint32_t CurrentImageIdx = 0;
 
-	struct FramebufferInfo
+	// This is the main backbuffer of the window surface.
+	// When no render target is assigned, this is what is used.
+	struct BackbufferInfo
 	{
 		Array<VkImage> Images;
 		Array<VkImageView> ImageViews;
 		Array<VkFramebuffer> Framebuffers;
-	} Framebuffer;
+		VkRenderPass RenderPass;
+	} Backbuffer;
 
 	struct DeviceStore
 	{
@@ -119,8 +122,6 @@ private:
 
 	VkQueue GraphicsQueue;
 	VkQueue PresentQueue;
-
-	VkRenderPass RenderPass;
 
 	VkCommandPool CommandPool;
 	Array<VkCommandBuffer> CommandBuffers; // one for each framebuffer
