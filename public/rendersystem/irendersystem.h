@@ -36,7 +36,12 @@ struct ColorFloat
 class IRenderTarget;
 class IVertexBuffer;
 class IIndexBuffer;
-class IShader;
+
+class IShader
+{
+public:
+
+};
 
 class IRenderSystem
 {
