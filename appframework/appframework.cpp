@@ -20,9 +20,7 @@ void AppFramework::Execute(const Span<String> &args)
 
 	Modules::LibHandle appLib = Modules::LoadLib( CurrentApp );
 
-	auto GetModuleDict = Modules::GetLibraryModuleDict( appLib );
-
-	IModule *gamemodule = GetModuleDict->Find( "GameApp" );
+	IModule *gamemodule = GetGlobalModuleDict()->Find("GameApp");
 
 	TheApp = reinterpret_cast<IApplication*>( gamemodule->GetInterface() );
 

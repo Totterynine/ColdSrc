@@ -13,7 +13,15 @@ namespace Modules {
 
 	LibHandle LoadLib( String name )
 	{
-		return SDL_LoadObject( (name + ".dll" ).c_str());
+		LibHandle lib = SDL_LoadObject( ( name + ".dll" ).c_str() );
+
+		auto OtherModuleDict = Modules::GetLibraryModuleDict( lib );
+		if ( !OtherModuleDict )
+			return nullptr;
+
+		GetGlobalModuleDict()->Merge( OtherModuleDict );
+
+		return lib;
 	}
 
 	ModuleDictionary *GetLibraryModuleDict( LibHandle libHandle )

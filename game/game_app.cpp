@@ -110,12 +110,7 @@ private:
         if ( !rendersysLib )
             return false;
 
-        auto GetModuleDict = Modules::GetLibraryModuleDict( rendersysLib );
-
-        if ( !GetModuleDict )
-            return false;
-
-        IModule *rendersysModule = GetModuleDict->Find( "RenderSystem" );
+        IModule *rendersysModule = GetGlobalModuleDict()->Find("RenderSystem");
 
         if ( !rendersysModule )
             return false;

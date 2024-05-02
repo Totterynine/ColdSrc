@@ -20,16 +20,22 @@ class ModuleDictionary
 public:
     void Add(String name, IModule *module)
     {
-        if ( InterfacesDict.size() == 0 || InterfacesDict.find(name) == InterfacesDict.end())
+        Dict<String, IModule *> *interfaces = &LocalInterfacesDict;
+        if ( UseGlobal ) interfaces = GlobalInterfacesDict;
+
+        if ( interfaces->size() == 0 || interfaces->find(name) == interfaces->end())
         {
-            InterfacesDict[name] = module;
+            (*interfaces)[name] = module;
         }
     }
 
     IModule *Find( const char *name )
     {
-        auto iter = InterfacesDict.find( name );
-        if ( iter != InterfacesDict.end() )
+        Dict<String, IModule *> *interfaces = &LocalInterfacesDict;
+        if ( UseGlobal ) interfaces = GlobalInterfacesDict;
+
+        auto iter = interfaces->find( name );
+        if ( iter != interfaces->end() )
         {
             return iter->second;
         }
@@ -39,14 +45,23 @@ public:
 
     void Merge( ModuleDictionary *other )
     {
-        for ( auto module : other->InterfacesDict )
+        for ( auto module : other->LocalInterfacesDict )
         {
             Add( module.first, module.second );
         }
+
+        other->UseGlobal = true;
+
+        if( UseGlobal )
+            other->GlobalInterfacesDict = GlobalInterfacesDict;
+        else
+            other->GlobalInterfacesDict = &LocalInterfacesDict;
     }
 
 private:
-    Dict<String, IModule *> InterfacesDict;
+    Dict<String, IModule *> *GlobalInterfacesDict;
+    Dict<String, IModule *> LocalInterfacesDict;
+    bool UseGlobal = false;
 };
 
 class IModule
