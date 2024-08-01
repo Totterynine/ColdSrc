@@ -11,4 +11,10 @@ namespace Modules {
 
 	ModuleDictionary *GetLibraryModuleDict( LibHandle libHandle );
 
+	template<class T>
+	T *FindModule()
+	{
+		return GetGlobalModuleDict()->FindModule<T>();
+	}
+
 }

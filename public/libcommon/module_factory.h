@@ -4,12 +4,12 @@
 
 class IModule;
 
-template<class T>
+template <class T>
 concept DerivedModule = std::is_base_of<IModule, T>::value;
 
 namespace Modules
 {
-    template<DerivedModule T>
+    template <DerivedModule T>
     struct DeclareModule;
 }
 
@@ -21,21 +21,23 @@ public:
     void Add(String name, IModule *module)
     {
         Dict<String, IModule *> *interfaces = &LocalInterfacesDict;
-        if ( UseGlobal ) interfaces = GlobalInterfacesDict;
+        if (UseGlobal)
+            interfaces = GlobalInterfacesDict;
 
-        if ( interfaces->size() == 0 || interfaces->find(name) == interfaces->end())
+        if (interfaces->size() == 0 || interfaces->find(name) == interfaces->end())
         {
             (*interfaces)[name] = module;
         }
     }
 
-    IModule *Find( const char *name )
+    IModule *Find(const char *name)
     {
         Dict<String, IModule *> *interfaces = &LocalInterfacesDict;
-        if ( UseGlobal ) interfaces = GlobalInterfacesDict;
+        if (UseGlobal)
+            interfaces = GlobalInterfacesDict;
 
-        auto iter = interfaces->find( name );
-        if ( iter != interfaces->end() )
+        auto iter = interfaces->find(name);
+        if (iter != interfaces->end())
         {
             return iter->second;
         }
@@ -43,16 +45,32 @@ public:
         return nullptr;
     }
 
-    void Merge( ModuleDictionary *other )
+    template <DerivedModule T>
+    T *FindModule()
     {
-        for ( auto module : other->LocalInterfacesDict )
+        Dict<String, IModule *> *interfaces = &LocalInterfacesDict;
+        if (UseGlobal)
+            interfaces = GlobalInterfacesDict;
+
+        auto iter = interfaces->find(T::ModuleName);
+        if (iter != interfaces->end())
         {
-            Add( module.first, module.second );
+            return static_cast<T *>(iter->second);
+        }
+
+        return nullptr;
+    }
+
+    void Merge(ModuleDictionary *other)
+    {
+        for (auto module : other->LocalInterfacesDict)
+        {
+            Add(module.first, module.second);
         }
 
         other->UseGlobal = true;
 
-        if( UseGlobal )
+        if (UseGlobal)
             other->GlobalInterfacesDict = GlobalInterfacesDict;
         else
             other->GlobalInterfacesDict = &LocalInterfacesDict;
@@ -67,7 +85,7 @@ private:
 class IModule
 {
 public:
-    IModule( const String classname ) { Classname = classname; }
+    IModule(const String classname) { Classname = classname; }
 
     virtual void *GetInterface() = 0;
 
@@ -75,18 +93,18 @@ public:
 };
 
 extern "C" _declspec(dllexport) ModuleDictionary *GetGlobalModuleDict();
-using GetGlobalModuleDict_Function = decltype( GetGlobalModuleDict );
+using GetGlobalModuleDict_Function = decltype(GetGlobalModuleDict);
 
 namespace Modules
 {
-    template<DerivedModule T>
+    template <DerivedModule T>
     struct DeclareModule
     {
         T *module_self = nullptr;
         DeclareModule()
         {
             module_self = new T();
-            GetGlobalModuleDict()->Add( module_self->Classname.c_str(), module_self);
+            GetGlobalModuleDict()->Add(module_self->Classname.c_str(), module_self);
         }
 
         T *operator->()

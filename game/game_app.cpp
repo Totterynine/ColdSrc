@@ -7,13 +7,11 @@
 
 IRenderSystem *rendersys = nullptr;
 
-class GameApp : public IApplication, public IModule
+class GameApp : public IApplication
 {
 public:
 
     double CurrentTime = 0.0;
-
-	GameApp() : IModule("GameApp") {}
 
     virtual void *GetInterface() { return static_cast<IApplication *>( this ); }
 
@@ -105,17 +103,10 @@ private:
 
     bool LoadDependencies()
     {
-        Modules::LibHandle rendersysLib = Modules::LoadLib( "rendersystem" );
+        rendersys = Modules::FindModule< IRenderSystem >();
 
-        if ( !rendersysLib )
+        if ( !rendersys )
             return false;
-
-        IModule *rendersysModule = GetGlobalModuleDict()->Find("RenderSystem");
-
-        if ( !rendersysModule )
-            return false;
-
-        rendersys = reinterpret_cast<IRenderSystem *>( rendersysModule->GetInterface() );
 
         return true;
     }

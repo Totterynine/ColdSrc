@@ -1,7 +1,6 @@
 #pragma once
 #include "common_stl.h"
 #include "rendersystem/irendersystem.h"
-#include "libcommon/module_lib.h"
 
 #include "VkBootstrap.h"
 #include "vk_mem_alloc.h"
@@ -12,10 +11,9 @@
 #include "vulkan/vulkan_win32.h"
 #endif
 
-class RenderSystemVulkan : public IRenderSystem, public IModule
+class RenderSystemVulkan : public IRenderSystem
 {
 public:
-	RenderSystemVulkan() : IModule("RenderSystem") {}
 	virtual void *GetInterface() { return static_cast<IRenderSystem *>(this); }
 
 public:

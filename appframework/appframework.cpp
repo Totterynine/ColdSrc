@@ -19,10 +19,12 @@ void AppFramework::Execute(const Span<String> &args)
 	}
 
 	Modules::LibHandle appLib = Modules::LoadLib( CurrentApp );
+	Modules::LibHandle rendersysLib = Modules::LoadLib( "rendersystem" );
 
-	IModule *gamemodule = GetGlobalModuleDict()->Find("GameApp");
+	if ( !appLib || !rendersysLib )
+		return;
 
-	TheApp = reinterpret_cast<IApplication*>( gamemodule->GetInterface() );
+	TheApp = Modules::FindModule<IApplication>();
 
 	if ( !TheApp->Execute() )
 		exit( 0 );

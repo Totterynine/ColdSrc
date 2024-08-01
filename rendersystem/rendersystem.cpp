@@ -317,7 +317,7 @@ bool RenderSystemVulkan::RecreateSwapchain()
         Device.Dispatch.destroyFramebuffer(framebuffer, nullptr);
     }
 
-    CurrentWindow.SwapChain.destroy_image_views( Backbuffer.ImageViews);
+    CurrentWindow.SwapChain.destroy_image_views(Backbuffer.ImageViews);
 
     if (!CreateSwapchain(CurrentWindow.Width, CurrentWindow.Height) &&
         !CreateFramebuffers() &&
@@ -379,11 +379,11 @@ bool RenderSystemVulkan::CreateFramebuffers()
     Backbuffer.Images = CurrentWindow.SwapChain.get_images().value();
     Backbuffer.ImageViews = CurrentWindow.SwapChain.get_image_views().value();
 
-    Backbuffer.Framebuffers.resize( Backbuffer.ImageViews.size());
+    Backbuffer.Framebuffers.resize(Backbuffer.ImageViews.size());
 
     for (size_t i = 0; i < Backbuffer.ImageViews.size(); i++)
     {
-        VkImageView attachments[] = { Backbuffer.ImageViews[i]};
+        VkImageView attachments[] = {Backbuffer.ImageViews[i]};
 
         VkFramebufferCreateInfo framebuffer_info = {};
         framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -421,7 +421,7 @@ bool RenderSystemVulkan::CreateCommandPool()
 
 bool RenderSystemVulkan::CreateCommandBuffers()
 {
-    CommandBuffers.resize( Backbuffer.Framebuffers.size());
+    CommandBuffers.resize(Backbuffer.Framebuffers.size());
 
     VkCommandBufferAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;

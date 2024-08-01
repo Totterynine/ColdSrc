@@ -1,4 +1,5 @@
 #pragma once
+#include "libcommon/module_lib.h"
 
 struct BlendState
 {
@@ -43,9 +44,14 @@ public:
 
 };
 
-class IRenderSystem
+class IRenderSystem : public IModule
 {
 public:
+
+    static constexpr const char *ModuleName = "RenderSystem";
+
+    IRenderSystem() : IModule( ModuleName ) {}
+
     // Create the rendering system
     virtual bool Create() = 0;
 

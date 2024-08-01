@@ -1,10 +1,16 @@
 #pragma once
+#include "libcommon/module_lib.h"
 
 // Custom application that's defined and created by User and handled by appframework.
 
-class IApplication
+class IApplication : public IModule
 {
 public:
+
+    static constexpr const char *ModuleName = "Application";
+
+    IApplication() : IModule( ModuleName ) {}
+
     virtual const char *GetAppName() = 0;
 
     // Called when app is first started and shutdown.
