@@ -76,13 +76,15 @@ private:
 	bool CreateSwapchain(int w, int h);
 	bool RecreateSwapchain();
 
-	bool CreateRenderPass();
-	bool CreateFramebuffers();
+	bool CreateBackBufferObjects();
 
 	bool CreateCommandPool();
 	bool CreateCommandBuffers();
 
 	bool CreateSyncObjects();
+
+	void Util_TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout);
+	VkSemaphoreSubmitInfo Util_CreateSemaphoreSubmitInfo(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore);
 
 	vkb::Instance VulkanInstance;
 
@@ -103,13 +105,14 @@ private:
 
 	// This is the main backbuffer of the window surface.
 	// When no render target is assigned, this is what is used.
+	// We have 1 for each swapchain image
 	struct BackbufferInfo
 	{
-		Array<VkImage> Images;
-		Array<VkImageView> ImageViews;
-		Array<VkFramebuffer> Framebuffers;
-		VkRenderPass RenderPass;
-	} Backbuffer;
+		VkImage Image;
+		VkImageView ImageView;
+		VkFramebuffer Framebuffer;
+	};
+	Array<BackbufferInfo> BackBuffers;
 
 	struct DeviceStore
 	{
@@ -127,8 +130,11 @@ private:
 	VkClearColorValue ClearColorValue;
 	VkClearValue ClearValue;
 
-	Array<VkSemaphore> AvailableSemaphore;
-	Array<VkSemaphore> FinishedSemaphore;
-	Array<VkFence> FencesInFlight;
-	Array<VkFence> ImagesInFlight;
+	struct SwapSyncObjects
+	{
+		VkSemaphore SwapSemaphore;
+		VkSemaphore RenderSemaphore;
+		VkFence Fence;
+	};
+	Array<SwapSyncObjects> SwapChainSyncObjects;
 };

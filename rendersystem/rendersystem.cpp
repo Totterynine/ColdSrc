@@ -8,8 +8,9 @@ bool RenderSystemVulkan::Create()
 {
     vkb::InstanceBuilder builder;
     auto inst_ret = builder.set_app_name("ColdSrc")
-                        .request_validation_layers()
+                        .request_validation_layers(true)
                         .use_default_debug_messenger()
+                        .require_api_version(1, 3, 0)
                         .build();
     if (!inst_ret)
     {
@@ -41,9 +42,21 @@ void RenderSystemVulkan::AttachWindow(void *window_handle, int width, int height
     }
 #endif
 
+    //vulkan 1.3 features
+    VkPhysicalDeviceVulkan13Features features13{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
+    features13.dynamicRendering = true;
+    features13.synchronization2 = true;
+
+    //vulkan 1.2 features
+    VkPhysicalDeviceVulkan12Features features12{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+    features12.bufferDeviceAddress = true;
+    features12.descriptorIndexing = true;
+
     vkb::PhysicalDeviceSelector selector{VulkanInstance};
     auto phys_ret = selector.set_surface(CurrentWindow.vkSurface)
-                        .set_minimum_version(1, 2)
+                        .set_minimum_version(1, 3)
+                        .set_required_features_13(features13)
+                        .set_required_features_12(features12)
                         .require_dedicated_transfer_queue()
                         .select();
     if (!phys_ret)
@@ -71,9 +84,7 @@ void RenderSystemVulkan::AttachWindow(void *window_handle, int width, int height
         return;
     if (!CreateSwapchain(width, height))
         return;
-    if (!CreateRenderPass())
-        return;
-    if (!CreateFramebuffers())
+    if (!CreateBackBufferObjects())
         return;
     if (!CreateCommandPool())
         return;
@@ -85,11 +96,12 @@ void RenderSystemVulkan::AttachWindow(void *window_handle, int width, int height
 
 void RenderSystemVulkan::BeginRendering()
 {
-    Device.Dispatch.waitForFences(1, &FencesInFlight[CurrentFrameIdx], VK_TRUE, UINT64_MAX);
+    // wait for GPU to finish the work, then reset the fence
+    Device.Dispatch.waitForFences(1, &SwapChainSyncObjects[CurrentFrameIdx].Fence, VK_TRUE, UINT64_MAX);
+    Device.Dispatch.resetFences(1, &SwapChainSyncObjects[CurrentFrameIdx].Fence);
 
-    Device.Dispatch.resetCommandBuffer(CommandBuffers[CurrentFrameIdx], 0);
-
-    VkResult result = Device.Dispatch.acquireNextImageKHR(CurrentWindow.SwapChain, UINT64_MAX, AvailableSemaphore[CurrentFrameIdx], NULL, &CurrentImageIdx);
+    // request the swapchain image
+    VkResult result = Device.Dispatch.acquireNextImageKHR(CurrentWindow.SwapChain, UINT64_MAX, SwapChainSyncObjects[CurrentFrameIdx].SwapSemaphore, NULL, &CurrentImageIdx);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
@@ -101,33 +113,29 @@ void RenderSystemVulkan::BeginRendering()
         return;
     }
 
-    if (ImagesInFlight[CurrentImageIdx] != VK_NULL_HANDLE)
-    {
-        Device.Dispatch.waitForFences(1, &ImagesInFlight[CurrentImageIdx], VK_TRUE, UINT64_MAX);
-    }
-    ImagesInFlight[CurrentImageIdx] = FencesInFlight[CurrentFrameIdx];
+    VkCommandBuffer& CommandBuffer = CommandBuffers[CurrentFrameIdx];
+
+    // reset command buffer to begin recording a new one
+    Device.Dispatch.resetCommandBuffer(CommandBuffer, 0);
 
     VkCommandBufferBeginInfo begin_info = {};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    // (optional) we use this buffer exactly once in every frame, then reset
+    begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-    if (Device.Dispatch.beginCommandBuffer(CommandBuffers[CurrentFrameIdx], &begin_info) != VK_SUCCESS)
+    if (Device.Dispatch.beginCommandBuffer(CommandBuffer, &begin_info) != VK_SUCCESS)
     {
         return; // failed to begin recording command buffer
     }
 
-    VkRenderPassBeginInfo render_pass_info = {};
-    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    render_pass_info.renderPass = Backbuffer.RenderPass;
-    render_pass_info.framebuffer = Backbuffer.Framebuffers[CurrentImageIdx];
-    render_pass_info.renderArea.offset = {0, 0};
-    render_pass_info.renderArea.extent = {CurrentWindow.Width, CurrentWindow.Height};
-
-    Device.Dispatch.cmdBeginRenderPass(CommandBuffers[CurrentFrameIdx], &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+    // Transition the current image layout as general, so we can render into it
+    Util_TransitionImage(CommandBuffer, BackBuffers[CurrentImageIdx].Image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 }
 
 void RenderSystemVulkan::EndRendering()
 {
-    Device.Dispatch.cmdEndRenderPass(CommandBuffers[CurrentFrameIdx]);
+    // Transition the current image layout to presentable, so it can be presented
+    Util_TransitionImage(CommandBuffers[CurrentFrameIdx], BackBuffers[CurrentImageIdx].Image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     if (Device.Dispatch.endCommandBuffer(CommandBuffers[CurrentFrameIdx]) != VK_SUCCESS)
     {
@@ -135,25 +143,29 @@ void RenderSystemVulkan::EndRendering()
         return; // failed to record command buffer!
     }
 
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    VkCommandBufferSubmitInfo commandSubmitInfo{};
+    commandSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    commandSubmitInfo.pNext = nullptr;
+    commandSubmitInfo.commandBuffer = CommandBuffers[CurrentFrameIdx];
+    commandSubmitInfo.deviceMask = 0;
 
-    VkSemaphore waitSemaphores[] = {AvailableSemaphore[CurrentFrameIdx]};
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
+    VkSemaphoreSubmitInfo waitSemaphoreInfo = Util_CreateSemaphoreSubmitInfo(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, SwapChainSyncObjects[CurrentFrameIdx].SwapSemaphore);
+    VkSemaphoreSubmitInfo signalSemaphoreInfo = Util_CreateSemaphoreSubmitInfo(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, SwapChainSyncObjects[CurrentFrameIdx].RenderSemaphore);
 
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &CommandBuffers[CurrentFrameIdx];
+    VkSubmitInfo2 submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submitInfo.pNext = nullptr;
 
-    VkSemaphore signalSemaphores[] = {FinishedSemaphore[CurrentFrameIdx]};
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSemaphores;
+    submitInfo.waitSemaphoreInfoCount = 1;
+    submitInfo.pWaitSemaphoreInfos = &waitSemaphoreInfo;
 
-    Device.Dispatch.resetFences(1, &FencesInFlight[CurrentFrameIdx]);
+    submitInfo.signalSemaphoreInfoCount = 1;
+    submitInfo.pSignalSemaphoreInfos = &signalSemaphoreInfo;
 
-    Device.Dispatch.queueSubmit(GraphicsQueue, 1, &submitInfo, FencesInFlight[CurrentFrameIdx]);
+    submitInfo.commandBufferInfoCount = 1;
+    submitInfo.pCommandBufferInfos = &commandSubmitInfo;
+
+    Device.Dispatch.queueSubmit2(GraphicsQueue, 1, &submitInfo, SwapChainSyncObjects[CurrentFrameIdx].Fence);
 }
 
 void RenderSystemVulkan::SetClearColor(ColorFloat &color)
@@ -164,20 +176,12 @@ void RenderSystemVulkan::SetClearColor(ColorFloat &color)
 
 void RenderSystemVulkan::ClearColor()
 {
-    VkClearAttachment clearAttachments[] = {
-        {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-         .colorAttachment = 0,
-         .clearValue = ClearValue}};
+    VkImageSubresourceRange imgClearColorRange = {};
+    imgClearColorRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    imgClearColorRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+    imgClearColorRange.levelCount = VK_REMAINING_MIP_LEVELS;
 
-    VkClearRect clearRect = {
-        .rect = {
-            .offset = {CurrentViewport.x, CurrentViewport.y},
-            .extent = {static_cast<uint32_t>(CurrentViewport.w), static_cast<uint32_t>(CurrentViewport.h)},
-        },
-        .baseArrayLayer = 0,
-        .layerCount = 1};
-
-    Device.Dispatch.cmdClearAttachments(CommandBuffers[CurrentFrameIdx], 1, clearAttachments, 1, &clearRect);
+    Device.Dispatch.cmdClearColorImage(CommandBuffers[CurrentFrameIdx], BackBuffers[CurrentImageIdx].Image, VK_IMAGE_LAYOUT_GENERAL, &ClearColorValue, 1, &imgClearColorRange);
 }
 
 void RenderSystemVulkan::SetRenderTarget(IRenderTarget *target)
@@ -232,17 +236,14 @@ void RenderSystemVulkan::DrawIndexedPrimitives(int primitive_type, int index_cou
 
 void RenderSystemVulkan::Present()
 {
-    VkSemaphore signal_semaphores[] = {FinishedSemaphore[CurrentFrameIdx]};
-
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 
     present_info.waitSemaphoreCount = 1;
-    present_info.pWaitSemaphores = signal_semaphores;
+    present_info.pWaitSemaphores = &SwapChainSyncObjects[CurrentFrameIdx].RenderSemaphore;
 
-    VkSwapchainKHR swapChains[] = {CurrentWindow.SwapChain};
     present_info.swapchainCount = 1;
-    present_info.pSwapchains = swapChains;
+    present_info.pSwapchains = &CurrentWindow.SwapChain.swapchain;
 
     present_info.pImageIndices = &CurrentImageIdx;
 
@@ -312,15 +313,14 @@ bool RenderSystemVulkan::RecreateSwapchain()
 
     Device.Dispatch.destroyCommandPool(CommandPool, nullptr);
 
-    for (auto framebuffer : Backbuffer.Framebuffers)
+    for (auto backbuffer : BackBuffers)
     {
-        Device.Dispatch.destroyFramebuffer(framebuffer, nullptr);
+        Device.Dispatch.destroyFramebuffer(backbuffer.Framebuffer, nullptr);
+        vkDestroyImageView(Device.Logical, backbuffer.ImageView, nullptr);
     }
 
-    CurrentWindow.SwapChain.destroy_image_views(Backbuffer.ImageViews);
-
     if (!CreateSwapchain(CurrentWindow.Width, CurrentWindow.Height) &&
-        !CreateFramebuffers() &&
+        !CreateBackBufferObjects() &&
         !CreateCommandPool() &&
         !CreateCommandBuffers())
         return false;
@@ -328,76 +328,17 @@ bool RenderSystemVulkan::RecreateSwapchain()
     return true;
 }
 
-bool RenderSystemVulkan::CreateRenderPass()
+bool RenderSystemVulkan::CreateBackBufferObjects()
 {
-    VkAttachmentDescription color_attachment = {};
-    color_attachment.format = CurrentWindow.SwapChain.image_format;
-    color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    BackBuffers.resize(CurrentWindow.SwapChain.image_count);
 
-    VkAttachmentReference color_attachment_ref = {};
-    color_attachment_ref.attachment = 0;
-    color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    Array<VkImage> images= CurrentWindow.SwapChain.get_images().value();
+    Array<VkImageView> image_views = CurrentWindow.SwapChain.get_image_views().value();
 
-    VkSubpassDescription subpass = {};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &color_attachment_ref;
-
-    VkSubpassDependency dependency = {};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.srcAccessMask = 0;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-    VkRenderPassCreateInfo render_pass_info = {};
-    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    render_pass_info.attachmentCount = 1;
-    render_pass_info.pAttachments = &color_attachment;
-    render_pass_info.subpassCount = 1;
-    render_pass_info.pSubpasses = &subpass;
-    render_pass_info.dependencyCount = 1;
-    render_pass_info.pDependencies = &dependency;
-
-    if (Device.Dispatch.createRenderPass(&render_pass_info, nullptr, &Backbuffer.RenderPass) != VK_SUCCESS)
+    for (size_t i = 0; i < BackBuffers.size(); i++)
     {
-        // std::cout << "failed to create render pass\n";
-        return false; // failed to create render pass!
-    }
-    return true;
-}
-
-bool RenderSystemVulkan::CreateFramebuffers()
-{
-    Backbuffer.Images = CurrentWindow.SwapChain.get_images().value();
-    Backbuffer.ImageViews = CurrentWindow.SwapChain.get_image_views().value();
-
-    Backbuffer.Framebuffers.resize(Backbuffer.ImageViews.size());
-
-    for (size_t i = 0; i < Backbuffer.ImageViews.size(); i++)
-    {
-        VkImageView attachments[] = {Backbuffer.ImageViews[i]};
-
-        VkFramebufferCreateInfo framebuffer_info = {};
-        framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebuffer_info.renderPass = Backbuffer.RenderPass;
-        framebuffer_info.attachmentCount = 1;
-        framebuffer_info.pAttachments = attachments;
-        framebuffer_info.width = CurrentWindow.SwapChain.extent.width;
-        framebuffer_info.height = CurrentWindow.SwapChain.extent.height;
-        framebuffer_info.layers = 1;
-
-        if (Device.Dispatch.createFramebuffer(&framebuffer_info, nullptr, &Backbuffer.Framebuffers[i]) != VK_SUCCESS)
-        {
-            return false; // failed to create framebuffer
-        }
+        BackBuffers[i].Image = images[i];
+        BackBuffers[i].ImageView = image_views[i];
     }
 
     return true;
@@ -421,7 +362,7 @@ bool RenderSystemVulkan::CreateCommandPool()
 
 bool RenderSystemVulkan::CreateCommandBuffers()
 {
-    CommandBuffers.resize(Backbuffer.Framebuffers.size());
+    CommandBuffers.resize(BackBuffers.size());
 
     VkCommandBufferAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -439,27 +380,69 @@ bool RenderSystemVulkan::CreateCommandBuffers()
 
 bool RenderSystemVulkan::CreateSyncObjects()
 {
-    AvailableSemaphore.resize(MAX_FRAMES_IN_FLIGHT);
-    FinishedSemaphore.resize(MAX_FRAMES_IN_FLIGHT);
-    FencesInFlight.resize(MAX_FRAMES_IN_FLIGHT);
-    ImagesInFlight.resize(CurrentWindow.SwapChain.image_count, VK_NULL_HANDLE);
+    SwapChainSyncObjects.resize(MAX_FRAMES_IN_FLIGHT);
 
     VkSemaphoreCreateInfo semaphore_info = {};
     semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
     VkFenceCreateInfo fence_info = {};
     fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT; // make sure fence is already signaled
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
-        if (Device.Dispatch.createSemaphore(&semaphore_info, nullptr, &AvailableSemaphore[i]) != VK_SUCCESS ||
-            Device.Dispatch.createSemaphore(&semaphore_info, nullptr, &FinishedSemaphore[i]) != VK_SUCCESS ||
-            Device.Dispatch.createFence(&fence_info, nullptr, &FencesInFlight[i]) != VK_SUCCESS)
+        if (Device.Dispatch.createSemaphore(&semaphore_info, nullptr, &SwapChainSyncObjects[i].RenderSemaphore) != VK_SUCCESS ||
+            Device.Dispatch.createSemaphore(&semaphore_info, nullptr, &SwapChainSyncObjects[i].SwapSemaphore) != VK_SUCCESS ||
+            Device.Dispatch.createFence(&fence_info, nullptr, &SwapChainSyncObjects[i].Fence) != VK_SUCCESS)
         {
             // std::cout << "failed to create sync objects\n";
             return false; // failed to create synchronization objects for a frame
         }
     }
     return true;
+}
+
+void RenderSystemVulkan::Util_TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)
+{
+    VkImageMemoryBarrier2 imageBarrier{ .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+    imageBarrier.pNext = nullptr;
+
+    imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+    imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+
+    imageBarrier.oldLayout = currentLayout;
+    imageBarrier.newLayout = newLayout;
+
+    VkImageAspectFlags aspectMask = (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    VkImageSubresourceRange imgSubresourceRange = {};
+    imgSubresourceRange.aspectMask = aspectMask;
+    imgSubresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+    imgSubresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+
+    imageBarrier.subresourceRange = imgSubresourceRange;
+    imageBarrier.image = image;
+
+    VkDependencyInfo depInfo{};
+    depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    depInfo.pNext = nullptr;
+
+    depInfo.imageMemoryBarrierCount = 1;
+    depInfo.pImageMemoryBarriers = &imageBarrier;
+
+    Device.Dispatch.cmdPipelineBarrier2(cmd, &depInfo);
+}
+
+VkSemaphoreSubmitInfo RenderSystemVulkan::Util_CreateSemaphoreSubmitInfo(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore)
+{
+    VkSemaphoreSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    submitInfo.pNext = nullptr;
+    submitInfo.semaphore = semaphore;
+    submitInfo.stageMask = stageMask;
+    submitInfo.deviceIndex = 0;
+    submitInfo.value = 1;
+
+    return submitInfo;
 }

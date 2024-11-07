@@ -7,6 +7,7 @@
 #include <span>
 #include <unordered_map>
 #include <optional>
+#include <deque>
 
 #include <concepts>
 
@@ -28,3 +29,6 @@ using Dict = std::unordered_map<K, T>;
 
 template<class T>
 using Optional = std::optional<T>;
+
+template<class T>
+using Queue = std::deque<T>;
