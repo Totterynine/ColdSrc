@@ -11,6 +11,27 @@
 #include "vulkan/vulkan_win32.h"
 #endif
 
+class ReleaseFuncQueue
+{
+	Queue<std::function<void()>> releaseQueue;
+public:
+
+	void Push(std::function<void()>&& func)
+	{
+		releaseQueue.push_back(func);
+	}
+
+	void Release()
+	{
+		// reverse iterate
+		for (auto it = releaseQueue.rbegin(); it != releaseQueue.rend(); it++) {
+			(*it)(); //call functors
+		}
+
+		releaseQueue.clear();
+	}
+};
+
 class RenderSystemVulkan : public IRenderSystem
 {
 public:
@@ -20,6 +41,8 @@ public:
 	virtual bool Create();
 
 	virtual void AttachWindow(void *window_handle, int w, int h);
+
+	virtual IRenderTarget* CreateRenderTarget(ImageFormat fmt, int width, int height);
 
 	// Begin rendering
 	virtual void BeginRendering();
@@ -56,6 +79,8 @@ public:
 	// Draw indexed primitives
 	virtual void DrawIndexedPrimitives(int primitive_type, int index_count);
 
+	virtual void CopyRenderTargetToBackBuffer();
+
 	// Present the render target to surface
 	virtual void Present();
 
@@ -71,6 +96,9 @@ public:
 	// Set the rasterizer state
 	virtual void SetRasterizerState(RasterizerState settings);
 
+	VmaAllocator &GetAllocator();
+	vkb::Device &GetDevice();
+
 private:
 	bool CreateQueues();
 	bool CreateSwapchain(int w, int h);
@@ -83,8 +111,10 @@ private:
 
 	bool CreateSyncObjects();
 
-	void Util_TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout);
-	VkSemaphoreSubmitInfo Util_CreateSemaphoreSubmitInfo(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore);
+	VkImage &GetBoundImage();
+
+	void Cmd_TransitionImageLayout(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout);
+	void Cmd_BlitImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize);
 
 	vkb::Instance VulkanInstance;
 
@@ -100,7 +130,10 @@ private:
 	Viewport CurrentViewport;
 	ScissorRectangle CurrentScissor;
 
+	// Current swapchain frame, updated by rendersystem
 	uint32_t CurrentFrameIdx = 0;
+
+	// Current swapchain image we are rendering to, retrieved from swapchain
 	uint32_t CurrentImageIdx = 0;
 
 	// This is the main backbuffer of the window surface.
@@ -137,4 +170,11 @@ private:
 		VkFence Fence;
 	};
 	Array<SwapSyncObjects> SwapChainSyncObjects;
+
+	VmaAllocator VulkanAllocator;
+
+	IRenderTarget* BoundRenderTarget = nullptr;
+	Array<IRenderTarget*> AllocatedRenderTargets;
 };
+
+extern Modules::DeclareModule<RenderSystemVulkan> rendersystem;

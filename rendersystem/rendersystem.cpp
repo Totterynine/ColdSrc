@@ -1,8 +1,12 @@
 #include "rendersystem.h"
+#include "rendertarget.h"
+#include "utils.h"
 
-static Modules::DeclareModule<RenderSystemVulkan> rendersystem;
+Modules::DeclareModule<RenderSystemVulkan> rendersystem;
 
 constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+
+ReleaseFuncQueue ReleaseQueue;
 
 bool RenderSystemVulkan::Create()
 {
@@ -19,6 +23,10 @@ bool RenderSystemVulkan::Create()
     }
 
     VulkanInstance = inst_ret.value();
+
+    ReleaseQueue.Push([&]() {
+        vkb::destroy_instance(VulkanInstance);
+        });
 
     return true;
 }
@@ -80,6 +88,24 @@ void RenderSystemVulkan::AttachWindow(void *window_handle, int width, int height
 
     Device.Dispatch = Device.Logical.make_table();
 
+    ReleaseQueue.Push([&]() {
+        vkb::destroy_surface(VulkanInstance, Device.Physical.surface);
+        vkb::destroy_device(Device.Logical);
+        vkb::destroy_debug_utils_messenger(VulkanInstance, VulkanInstance.debug_messenger);
+        });
+
+    // initialize the memory allocator
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.physicalDevice = Device.Physical;
+    allocatorInfo.device = Device.Logical;
+    allocatorInfo.instance = VulkanInstance;
+    allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    vmaCreateAllocator(&allocatorInfo, &VulkanAllocator);
+
+    ReleaseQueue.Push([&]() {
+        vmaDestroyAllocator(VulkanAllocator);
+        });
+
     if (!CreateQueues())
         return;
     if (!CreateSwapchain(width, height))
@@ -92,6 +118,15 @@ void RenderSystemVulkan::AttachWindow(void *window_handle, int width, int height
         return;
     if (!CreateSyncObjects())
         return;
+}
+
+IRenderTarget* RenderSystemVulkan::CreateRenderTarget(ImageFormat fmt, int width, int height)
+{
+    RenderTargetVk* rt = new RenderTargetVk;
+    rt->Create(fmt, width, height);
+
+    AllocatedRenderTargets.push_back(rt);
+    return rt;
 }
 
 void RenderSystemVulkan::BeginRendering()
@@ -129,13 +164,13 @@ void RenderSystemVulkan::BeginRendering()
     }
 
     // Transition the current image layout as general, so we can render into it
-    Util_TransitionImage(CommandBuffer, BackBuffers[CurrentImageIdx].Image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+    Cmd_TransitionImageLayout(CommandBuffer, BackBuffers[CurrentImageIdx].Image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 }
 
 void RenderSystemVulkan::EndRendering()
 {
     // Transition the current image layout to presentable, so it can be presented
-    Util_TransitionImage(CommandBuffers[CurrentFrameIdx], BackBuffers[CurrentImageIdx].Image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    Cmd_TransitionImageLayout(CommandBuffers[CurrentFrameIdx], BackBuffers[CurrentImageIdx].Image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
     if (Device.Dispatch.endCommandBuffer(CommandBuffers[CurrentFrameIdx]) != VK_SUCCESS)
     {
@@ -149,8 +184,8 @@ void RenderSystemVulkan::EndRendering()
     commandSubmitInfo.commandBuffer = CommandBuffers[CurrentFrameIdx];
     commandSubmitInfo.deviceMask = 0;
 
-    VkSemaphoreSubmitInfo waitSemaphoreInfo = Util_CreateSemaphoreSubmitInfo(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, SwapChainSyncObjects[CurrentFrameIdx].SwapSemaphore);
-    VkSemaphoreSubmitInfo signalSemaphoreInfo = Util_CreateSemaphoreSubmitInfo(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, SwapChainSyncObjects[CurrentFrameIdx].RenderSemaphore);
+    VkSemaphoreSubmitInfo waitSemaphoreInfo = RenderUtils::semaphore_submit_info(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR, SwapChainSyncObjects[CurrentFrameIdx].SwapSemaphore);
+    VkSemaphoreSubmitInfo signalSemaphoreInfo = RenderUtils::semaphore_submit_info(VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT, SwapChainSyncObjects[CurrentFrameIdx].RenderSemaphore);
 
     VkSubmitInfo2 submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
@@ -181,11 +216,13 @@ void RenderSystemVulkan::ClearColor()
     imgClearColorRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
     imgClearColorRange.levelCount = VK_REMAINING_MIP_LEVELS;
 
-    Device.Dispatch.cmdClearColorImage(CommandBuffers[CurrentFrameIdx], BackBuffers[CurrentImageIdx].Image, VK_IMAGE_LAYOUT_GENERAL, &ClearColorValue, 1, &imgClearColorRange);
+    Device.Dispatch.cmdClearColorImage(CommandBuffers[CurrentFrameIdx], GetBoundImage(), VK_IMAGE_LAYOUT_GENERAL, &ClearColorValue, 1, &imgClearColorRange);
 }
 
 void RenderSystemVulkan::SetRenderTarget(IRenderTarget *target)
 {
+    BoundRenderTarget = target;
+    Cmd_TransitionImageLayout(CommandBuffers[CurrentFrameIdx], GetBoundImage(), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 }
 
 void RenderSystemVulkan::SetViewport(Viewport settings)
@@ -234,6 +271,40 @@ void RenderSystemVulkan::DrawIndexedPrimitives(int primitive_type, int index_cou
 {
 }
 
+void RenderSystemVulkan::CopyRenderTargetToBackBuffer()
+{
+    if (!BoundRenderTarget)
+    {
+        assert(0);
+        return;
+    }
+
+    RenderTargetVk *vkRT = static_cast<RenderTargetVk*>(BoundRenderTarget);
+
+    int width, height;
+    vkRT->GetExtent(width, height);
+
+    VkExtent2D renderTargetExtent = {
+        min(CurrentWindow.Width, width),
+        min(CurrentWindow.Height, height)
+    };
+
+    VkExtent2D swapchainExtent = {
+        CurrentWindow.Width,
+        CurrentWindow.Height
+    };
+
+    Cmd_TransitionImageLayout(CommandBuffers[CurrentFrameIdx], GetBoundImage(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    Cmd_TransitionImageLayout(CommandBuffers[CurrentFrameIdx], BackBuffers[CurrentImageIdx].Image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    // copy render target into the swapchain
+    Cmd_BlitImage(CommandBuffers[CurrentFrameIdx], GetBoundImage(), BackBuffers[CurrentImageIdx].Image, renderTargetExtent, swapchainExtent);
+
+    // restore image layouts
+    Cmd_TransitionImageLayout(CommandBuffers[CurrentFrameIdx], GetBoundImage(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
+    Cmd_TransitionImageLayout(CommandBuffers[CurrentFrameIdx], BackBuffers[CurrentImageIdx].Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
+}
+
 void RenderSystemVulkan::Present()
 {
     VkPresentInfoKHR present_info = {};
@@ -254,6 +325,7 @@ void RenderSystemVulkan::Present()
 
 void RenderSystemVulkan::Destroy()
 {
+    ReleaseQueue.Release();
 }
 
 void RenderSystemVulkan::SetBlendState(BlendState settings)
@@ -266,6 +338,16 @@ void RenderSystemVulkan::SetDepthStencilState(DepthStencilState settings)
 
 void RenderSystemVulkan::SetRasterizerState(RasterizerState settings)
 {
+}
+
+VmaAllocator &RenderSystemVulkan::GetAllocator()
+{
+    return VulkanAllocator;
+}
+
+vkb::Device &RenderSystemVulkan::GetDevice()
+{
+    return Device.Logical;
 }
 
 bool RenderSystemVulkan::CreateQueues()
@@ -303,6 +385,10 @@ bool RenderSystemVulkan::CreateSwapchain(int w, int h)
     vkb::destroy_swapchain(CurrentWindow.SwapChain);
 
     CurrentWindow.SwapChain = swapResult.value();
+
+    ReleaseQueue.Push([&]() {
+        vkb::destroy_swapchain(CurrentWindow.SwapChain);
+        });
 
     return true;
 }
@@ -357,6 +443,13 @@ bool RenderSystemVulkan::CreateCommandPool()
         return false; // failed to create command pool
     }
 
+    ReleaseQueue.Push([&]() {
+        for (int i = 0; CurrentWindow.SwapChain.image_count; ++i)
+        {
+            vkDestroyCommandPool(Device.Logical, CommandPool, nullptr);
+        }
+        });
+
     return true;
 }
 
@@ -399,10 +492,32 @@ bool RenderSystemVulkan::CreateSyncObjects()
             return false; // failed to create synchronization objects for a frame
         }
     }
+
+    ReleaseQueue.Push([&]() {
+        for (int i = 0; CurrentWindow.SwapChain.image_count; ++i)
+        {
+            //destroy sync objects
+            vkDestroyFence(Device.Logical, SwapChainSyncObjects[i].Fence, nullptr);
+            vkDestroySemaphore(Device.Logical, SwapChainSyncObjects[i].RenderSemaphore, nullptr);
+            vkDestroySemaphore(Device.Logical, SwapChainSyncObjects[i].SwapSemaphore, nullptr);
+        }
+        });
+
     return true;
 }
 
-void RenderSystemVulkan::Util_TransitionImage(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)
+VkImage& RenderSystemVulkan::GetBoundImage()
+{
+    if (BoundRenderTarget)
+    {
+        RenderTargetVk* vkRT = static_cast<RenderTargetVk*>(BoundRenderTarget);
+        return vkRT->GetImage();
+    }
+    
+    return BackBuffers[CurrentImageIdx].Image;
+}
+
+void RenderSystemVulkan::Cmd_TransitionImageLayout(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)
 {
     VkImageMemoryBarrier2 imageBarrier{ .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
     imageBarrier.pNext = nullptr;
@@ -434,15 +549,36 @@ void RenderSystemVulkan::Util_TransitionImage(VkCommandBuffer cmd, VkImage image
     Device.Dispatch.cmdPipelineBarrier2(cmd, &depInfo);
 }
 
-VkSemaphoreSubmitInfo RenderSystemVulkan::Util_CreateSemaphoreSubmitInfo(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore)
+void RenderSystemVulkan::Cmd_BlitImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize)
 {
-    VkSemaphoreSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-    submitInfo.pNext = nullptr;
-    submitInfo.semaphore = semaphore;
-    submitInfo.stageMask = stageMask;
-    submitInfo.deviceIndex = 0;
-    submitInfo.value = 1;
+    VkImageBlit2 blitRegion{ .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2, .pNext = nullptr };
 
-    return submitInfo;
+    blitRegion.srcOffsets[1].x = srcSize.width;
+    blitRegion.srcOffsets[1].y = srcSize.height;
+    blitRegion.srcOffsets[1].z = 1;
+
+    blitRegion.dstOffsets[1].x = dstSize.width;
+    blitRegion.dstOffsets[1].y = dstSize.height;
+    blitRegion.dstOffsets[1].z = 1;
+
+    blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.srcSubresource.baseArrayLayer = 0;
+    blitRegion.srcSubresource.layerCount = 1;
+    blitRegion.srcSubresource.mipLevel = 0;
+
+    blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blitRegion.dstSubresource.baseArrayLayer = 0;
+    blitRegion.dstSubresource.layerCount = 1;
+    blitRegion.dstSubresource.mipLevel = 0;
+
+    VkBlitImageInfo2 blitInfo{ .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2, .pNext = nullptr };
+    blitInfo.dstImage = destination;
+    blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    blitInfo.srcImage = source;
+    blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    blitInfo.filter = VK_FILTER_LINEAR;
+    blitInfo.regionCount = 1;
+    blitInfo.pRegions = &blitRegion;
+
+    vkCmdBlitImage2(cmd, &blitInfo);
 }
