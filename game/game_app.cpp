@@ -39,6 +39,22 @@ public:
 
         rendersys->AttachWindow( &hwnd, 1280, 720 );
 
+        rendertarget = rendersys->CreateRenderTarget(ImageFormat::RGBA16F, 1280, 720);
+
+        HShader hardwareShader = rendersys->LoadShaderModule("circle_cs61.spv");
+        circle_shader = rendersys->CreateShader();
+        circle_shader->SetComputeModule(hardwareShader);
+
+        circle_shader_descriptor = rendersys->CreateDescriptorSet();
+        circle_shader_descriptor->SetShaderStages(ShaderStage::Compute);
+        circle_shader_descriptor->AddBinding(0, DescriptorType::Image);
+        circle_shader_descriptor->BuildLayout();
+
+        circle_shader->BuildPipeline(circle_shader_descriptor);
+
+        circle_shader_descriptor->BindImage(0, rendertarget->GetHardwareImageView());
+        circle_shader_descriptor->BuildSet();
+
         return true;
     }
     virtual void Shutdown()
@@ -62,20 +78,35 @@ public:
             {
                 resume = false;
             }
+            if (e.type == SDL_EVENT_WINDOW_MINIMIZED)
+            {
+                IsMinimized = true;
+            }
+            if (e.type == SDL_EVENT_WINDOW_SHOWN || e.type == SDL_EVENT_WINDOW_RESTORED)
+            {
+                IsMinimized = false;
+            }
         }
 
         return resume;
     }
 
-    // Run the application logic before frame begins.
+    // Run the application logic before rendering frame.
     virtual void Simulate( float dt )
     {
         CurrentTime += dt;
     }
 
-    // Runs the process of rendering the frame, then it presenting on selected surface.
+    // Runs the process of rendering the frame, then presenting it on selected surface.
     virtual void Frame()
     {
+        // In some GPU Drivers, the window surface extent is reduced to 0 when
+        // minimized, which crashes the Vulkan swapchain creation
+        if (IsMinimized)
+        {
+            return;
+        }
+
         ColorFloat clearClr = { };
         clearClr.r = sin( CurrentTime / 2 ) + 1.0;
         clearClr.g = sin( CurrentTime + ( 3.1415926 / 2.0 ) ) + 1;
@@ -89,12 +120,19 @@ public:
         rendersys->BeginRendering();
 
         rendersys->SetViewport( { 0,0,1280,720 } );
+        rendersys->SetRenderTarget(rendertarget);
 
         rendersys->SetClearColor( clearClr );
         rendersys->ClearColor();
 
-        rendersys->EndRendering();
+        rendersys->BindShader(circle_shader, PipelineBindPoint::Compute);
+        rendersys->BindDescriptorSet(circle_shader_descriptor, PipelineBindPoint::Compute);
 
+        rendersys->Dispatch(1280 / 2, 720 / 2, 1);
+
+        rendersys->CopyRenderTargetToBackBuffer();
+
+        rendersys->EndRendering();
         rendersys->Present();
 
     }
@@ -111,6 +149,12 @@ private:
         return true;
     }
 
+    IRenderTarget* rendertarget;
+    IShader* circle_shader;
+    IDescriptorSet* circle_shader_descriptor;
+
+    SDL_Window* Window;
+    bool IsMinimized = false;
 };
 
 static Modules::DeclareModule<GameApp> game_module;

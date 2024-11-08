@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <optional>
 #include <deque>
+#include <functional>
 
 #include <concepts>
 

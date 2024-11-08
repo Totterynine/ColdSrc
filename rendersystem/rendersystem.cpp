@@ -1,6 +1,6 @@
 #include "rendersystem.h"
 #include "rendertarget.h"
-#include "utils.h"
+#include "shader.h"
 
 Modules::DeclareModule<RenderSystemVulkan> rendersystem;
 
@@ -118,6 +118,8 @@ void RenderSystemVulkan::AttachWindow(void *window_handle, int width, int height
         return;
     if (!CreateSyncObjects())
         return;
+    if (!InitDescriptorPool())
+        return;
 }
 
 IRenderTarget* RenderSystemVulkan::CreateRenderTarget(ImageFormat fmt, int width, int height)
@@ -127,6 +129,21 @@ IRenderTarget* RenderSystemVulkan::CreateRenderTarget(ImageFormat fmt, int width
 
     AllocatedRenderTargets.push_back(rt);
     return rt;
+}
+
+IDescriptorSet* RenderSystemVulkan::CreateDescriptorSet()
+{
+    return new DescriptorSetVk();
+}
+
+IShader* RenderSystemVulkan::CreateShader()
+{
+    return new ShaderVk();
+}
+
+HShader RenderSystemVulkan::LoadShaderModule(const char* filepath)
+{
+    return RenderUtils::load_shader_module(GetDevice(), filepath);
 }
 
 void RenderSystemVulkan::BeginRendering()
@@ -201,6 +218,9 @@ void RenderSystemVulkan::EndRendering()
     submitInfo.pCommandBufferInfos = &commandSubmitInfo;
 
     Device.Dispatch.queueSubmit2(GraphicsQueue, 1, &submitInfo, SwapChainSyncObjects[CurrentFrameIdx].Fence);
+
+    BoundShader = nullptr;
+    BoundRenderTarget = nullptr;
 }
 
 void RenderSystemVulkan::SetClearColor(ColorFloat &color)
@@ -251,8 +271,18 @@ void RenderSystemVulkan::SetScissorRectangle(ScissorRectangle settings)
     Device.Dispatch.cmdSetScissor(CommandBuffers[CurrentFrameIdx], 0, 1, &scissor);
 }
 
-void RenderSystemVulkan::SetShader(IShader *shader)
+void RenderSystemVulkan::BindShader(IShader *shader, PipelineBindPoint point)
 {
+    BoundShader = static_cast<ShaderVk*>(shader);
+
+    vkCmdBindPipeline(CommandBuffers[CurrentFrameIdx], RenderUtils::PipelineBindPointToVulkan(point), BoundShader->GetPipeline());
+}
+
+void RenderSystemVulkan::BindDescriptorSet(IDescriptorSet* set, PipelineBindPoint point)
+{
+    DescriptorSetVk* vkSet = static_cast<DescriptorSetVk*>(set);
+
+    vkCmdBindDescriptorSets(CommandBuffers[CurrentFrameIdx], RenderUtils::PipelineBindPointToVulkan(point), BoundShader->GetPipelineLayout(), 0, 1, &vkSet->GetDescriptor(), 0, nullptr);
 }
 
 void RenderSystemVulkan::SetVertexBuffer(IVertexBuffer *buffer)
@@ -323,6 +353,11 @@ void RenderSystemVulkan::Present()
     CurrentFrameIdx = (CurrentFrameIdx + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
+void RenderSystemVulkan::Dispatch(int groupSizeX, int groupSizeY, int groupSizeZ)
+{
+    vkCmdDispatch(CommandBuffers[CurrentFrameIdx], groupSizeX, groupSizeY, groupSizeZ);
+}
+
 void RenderSystemVulkan::Destroy()
 {
     ReleaseQueue.Release();
@@ -348,6 +383,11 @@ VmaAllocator &RenderSystemVulkan::GetAllocator()
 vkb::Device &RenderSystemVulkan::GetDevice()
 {
     return Device.Logical;
+}
+
+RenderUtils::DescriptorPoolHelper& RenderSystemVulkan::GetDescriptorPool()
+{
+    return DescriptorPool;
 }
 
 bool RenderSystemVulkan::CreateQueues()
@@ -502,6 +542,19 @@ bool RenderSystemVulkan::CreateSyncObjects()
             vkDestroySemaphore(Device.Logical, SwapChainSyncObjects[i].SwapSemaphore, nullptr);
         }
         });
+
+    return true;
+}
+
+bool RenderSystemVulkan::InitDescriptorPool()
+{
+    //create a descriptor pool that will hold 10 sets with 1 image each
+    Array<RenderUtils::DescriptorPoolHelper::PoolSizeRatio> sizes =
+    {
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 }
+    };
+
+    DescriptorPool.Init(Device.Logical, 10, sizes);
 
     return true;
 }

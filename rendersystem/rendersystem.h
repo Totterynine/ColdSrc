@@ -1,8 +1,10 @@
 #pragma once
 #include "common_stl.h"
 #include "rendersystem/irendersystem.h"
+#include "vulkan_common.h"
+#include "utils.h"
+#include "shader.h"
 
-#include "VkBootstrap.h"
 #include "vk_mem_alloc.h"
 
 #ifdef WIN32
@@ -43,6 +45,9 @@ public:
 	virtual void AttachWindow(void *window_handle, int w, int h);
 
 	virtual IRenderTarget* CreateRenderTarget(ImageFormat fmt, int width, int height);
+	virtual IDescriptorSet* CreateDescriptorSet();
+	virtual IShader* CreateShader();
+	virtual HShader LoadShaderModule(const char* filepath);
 
 	// Begin rendering
 	virtual void BeginRendering();
@@ -65,7 +70,9 @@ public:
 
 	// Set the current shader to render the mesh
 	// Set to nullptr to clear
-	virtual void SetShader(IShader *shader);
+	virtual void BindShader(IShader* shader, PipelineBindPoint point);
+
+	virtual void BindDescriptorSet(IDescriptorSet* set, PipelineBindPoint point);
 
 	// Set the vertex buffer
 	virtual void SetVertexBuffer(IVertexBuffer *buffer);
@@ -84,6 +91,8 @@ public:
 	// Present the render target to surface
 	virtual void Present();
 
+	virtual void Dispatch(int groupSizeX, int groupSizeY, int groupSizeZ);
+
 	// Destroy the rendering system
 	virtual void Destroy();
 
@@ -98,6 +107,7 @@ public:
 
 	VmaAllocator &GetAllocator();
 	vkb::Device &GetDevice();
+	RenderUtils::DescriptorPoolHelper& GetDescriptorPool();
 
 private:
 	bool CreateQueues();
@@ -110,6 +120,8 @@ private:
 	bool CreateCommandBuffers();
 
 	bool CreateSyncObjects();
+
+	bool InitDescriptorPool();
 
 	VkImage &GetBoundImage();
 
@@ -175,6 +187,9 @@ private:
 
 	IRenderTarget* BoundRenderTarget = nullptr;
 	Array<IRenderTarget*> AllocatedRenderTargets;
+	RenderUtils::DescriptorPoolHelper DescriptorPool;
+
+	ShaderVk* BoundShader = nullptr;
 };
 
 extern Modules::DeclareModule<RenderSystemVulkan> rendersystem;

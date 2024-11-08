@@ -1,4 +1,5 @@
 #pragma once
+#include "rendersystem/irendersystem.h"
 #include "rendersystem.h"
 
 class RenderTargetVk : public IRenderTarget
@@ -7,6 +8,8 @@ public:
 
 	virtual void Create(ImageFormat fmt, int width, int height);
 	virtual void Destroy();
+	virtual HImage GetHardwareImage();
+	virtual HImageView GetHardwareImageView();
 
 	VkImage& GetImage();
 	void GetExtent(int &width, int &height);

@@ -36,6 +36,16 @@ void RenderTargetVk::Destroy()
 	vmaDestroyImage(rendersystem->GetAllocator(), renderImage, allocation);
 }
 
+HImage RenderTargetVk::GetHardwareImage()
+{
+	return GetImage();
+}
+
+HImageView RenderTargetVk::GetHardwareImageView()
+{
+	return imageView;
+}
+
 VkImage& RenderTargetVk::GetImage()
 {
 	return renderImage;
