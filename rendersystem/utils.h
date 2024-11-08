@@ -12,15 +12,16 @@ namespace RenderUtils
 	VkFormat ImageFormatToVulkan(ImageFormat fmt);
 	VkDescriptorType DescriptorTypeToVulkan(DescriptorType type);
 	VkPipelineBindPoint PipelineBindPointToVulkan(PipelineBindPoint type);
+	VkShaderStageFlagBits ShaderStageToVulkan(ShaderStage stages);
 
 	class DescriptorLayoutBuilder
 	{
 	public:
 
-		void AddBinding(uint32_t binding, VkDescriptorType type);
+		void AddBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlagBits stage);
 		void Clear();
 
-		VkDescriptorSetLayout Build(VkShaderStageFlags shaderStages, void *next = nullptr, VkDescriptorSetLayoutCreateFlags flags = 0);
+		VkDescriptorSetLayout Build(void *next = nullptr, VkDescriptorSetLayoutCreateFlags flags = 0);
 
 		Array<VkDescriptorSetLayoutBinding> Bindings;
 	};

@@ -90,21 +90,27 @@ enum class PipelineBindPoint : short
     Compute
 };
 
+struct DescriptorLayoutEntry
+{
+    uint32_t Binding;
+    DescriptorType Type;
+    ShaderStage Stage;
+};
+
+class IDescriptorLayout
+{
+public:
+
+};
+
 class IDescriptorSet
 {
 public:
-    virtual void SetShaderStages(ShaderStage stages) = 0;
-    virtual void AddBinding(uint32_t binding, DescriptorType type) = 0;
-
-    // Call when you finished adding bindings
-    // Calling this will clear the layout, if you want to change it
-    // you will have to recreate it
-    virtual void BuildLayout() = 0;
+    virtual void Init(IDescriptorLayout* layout) = 0;
 
     virtual void BindImage(uint32_t binding, HImageView img) = 0;
 
-    // Call when you finished binding resources
-    virtual void BuildSet() = 0;
+    virtual void Update() = 0;
 };
 
 class IShader
@@ -115,9 +121,7 @@ public:
 
     virtual void SetComputeModule(HShader csModule) = 0;
     
-    // Descriptor set is required for its layout
-    // TODO: Separate descriptor layout for reuse in future
-    virtual void BuildPipeline(IDescriptorSet* set) = 0;
+    virtual void BuildPipeline(IDescriptorLayout* layout) = 0;
 
 };
 
@@ -136,8 +140,10 @@ public:
     virtual void AttachWindow(void *window_handle, int w, int h) = 0;
 
     virtual IRenderTarget* CreateRenderTarget(ImageFormat fmt, int width, int height) = 0;
-    virtual IDescriptorSet* CreateDescriptorSet() = 0;
+    virtual IDescriptorLayout* BuildDescriptorLayout(uint32_t numEntries, DescriptorLayoutEntry* entries) = 0;
+    virtual IDescriptorSet* BuildDescriptorSet(IDescriptorLayout *layout) = 0;
     virtual IShader* CreateShader() = 0;
+
     virtual HShader LoadShaderModule(const char* filepath) = 0;
 
     // Begin rendering

@@ -45,7 +45,8 @@ public:
 	virtual void AttachWindow(void *window_handle, int w, int h);
 
 	virtual IRenderTarget* CreateRenderTarget(ImageFormat fmt, int width, int height);
-	virtual IDescriptorSet* CreateDescriptorSet();
+	virtual IDescriptorLayout* BuildDescriptorLayout(uint32_t numEntries, DescriptorLayoutEntry* entries);
+	virtual IDescriptorSet* BuildDescriptorSet(IDescriptorLayout* layout);
 	virtual IShader* CreateShader();
 	virtual HShader LoadShaderModule(const char* filepath);
 

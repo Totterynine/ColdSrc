@@ -1,6 +1,7 @@
 #include "rendersystem.h"
 #include "rendertarget.h"
 #include "shader.h"
+#include "descriptorsets.h"
 
 Modules::DeclareModule<RenderSystemVulkan> rendersystem;
 
@@ -131,9 +132,27 @@ IRenderTarget* RenderSystemVulkan::CreateRenderTarget(ImageFormat fmt, int width
     return rt;
 }
 
-IDescriptorSet* RenderSystemVulkan::CreateDescriptorSet()
+IDescriptorLayout* RenderSystemVulkan::BuildDescriptorLayout(uint32_t numEntries, DescriptorLayoutEntry* entries)
 {
-    return new DescriptorSetVk();
+    DescriptorLayoutVk* layout = new DescriptorLayoutVk;
+
+    for (uint32_t i = 0; i < numEntries; ++i)
+    {
+        DescriptorLayoutEntry& entry = entries[i];
+        layout->AddBinding(entry.Binding, entry.Type, RenderUtils::ShaderStageToVulkan(entry.Stage));
+    }
+
+    layout->Build();
+
+    return layout;
+}
+
+IDescriptorSet* RenderSystemVulkan::BuildDescriptorSet(IDescriptorLayout* layout)
+{
+    DescriptorSetVk* vkDescriptorSet = new DescriptorSetVk;
+    vkDescriptorSet->Init(layout);
+
+    return vkDescriptorSet;
 }
 
 IShader* RenderSystemVulkan::CreateShader()

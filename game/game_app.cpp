@@ -39,21 +39,28 @@ public:
 
         rendersys->AttachWindow( &hwnd, 1280, 720 );
 
+        // HDR Render target to support higher color values
         rendertarget = rendersys->CreateRenderTarget(ImageFormat::RGBA16F, 1280, 720);
 
+        // Load shader module from file, get a new instance from rendersystem, give it our compute shader module
         HShader hardwareShader = rendersys->LoadShaderModule("circle_cs61.spv");
         circle_shader = rendersys->CreateShader();
         circle_shader->SetComputeModule(hardwareShader);
 
-        circle_shader_descriptor = rendersys->CreateDescriptorSet();
-        circle_shader_descriptor->SetShaderStages(ShaderStage::Compute);
-        circle_shader_descriptor->AddBinding(0, DescriptorType::Image);
-        circle_shader_descriptor->BuildLayout();
+        // Build shader input layout
+        DescriptorLayoutEntry layout[] =
+        {
+            {0, DescriptorType::Image, ShaderStage::Compute},
+        };
+        circle_shader_input_layout = rendersys->BuildDescriptorLayout(1, layout);
 
-        circle_shader->BuildPipeline(circle_shader_descriptor);
+        // Build shader pipeline according to our input layout
+        circle_shader->BuildPipeline(circle_shader_input_layout);
 
+        // Create a new Descriptor set, bind our rendertarget into it, update for changes to take effect
+        circle_shader_descriptor = rendersys->BuildDescriptorSet(circle_shader_input_layout);
         circle_shader_descriptor->BindImage(0, rendertarget->GetHardwareImageView());
-        circle_shader_descriptor->BuildSet();
+        circle_shader_descriptor->Update();
 
         return true;
     }
@@ -152,6 +159,7 @@ private:
     IRenderTarget* rendertarget;
     IShader* circle_shader;
     IDescriptorSet* circle_shader_descriptor;
+    IDescriptorLayout* circle_shader_input_layout;
 
     SDL_Window* Window;
     bool IsMinimized = false;

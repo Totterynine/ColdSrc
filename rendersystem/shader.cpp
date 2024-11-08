@@ -1,6 +1,7 @@
 #include "common_stl.h"
 #include "shader.h"
 #include "rendersystem.h"
+#include "descriptorsets.h"
 
 ShaderType ShaderVk::GetType()
 {
@@ -14,9 +15,9 @@ void ShaderVk::SetComputeModule(HShader csModule)
 	ComputeShader = static_cast<VkShaderModule>(csModule);
 }
 
-void ShaderVk::BuildPipeline(IDescriptorSet* set)
+void ShaderVk::BuildPipeline(IDescriptorLayout* layout)
 {
-	descriptorLayout = static_cast<DescriptorSetVk*>(set)->GetLayout();
+	descriptorLayout = static_cast<DescriptorLayoutVk*>(layout)->GetLayout();
 
 	switch (Type)
 	{
@@ -56,61 +57,4 @@ void ShaderVk::BuildComputePipeline()
 	computePipelineCreateInfo.stage = stageinfo;
 
 	vkCreateComputePipelines(rendersystem->GetDevice(), VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &shaderPipeline);
-}
-
-void DescriptorSetVk::SetShaderStages(ShaderStage stages)
-{
-	if(stages & ShaderStage::Vertex)
-		AllowedStages = static_cast<VkShaderStageFlagBits>(AllowedStages | VK_SHADER_STAGE_VERTEX_BIT);
-	if (stages & ShaderStage::Pixel)
-		AllowedStages = static_cast<VkShaderStageFlagBits>(AllowedStages | VK_SHADER_STAGE_FRAGMENT_BIT);
-	if (stages & ShaderStage::Compute)
-		AllowedStages = static_cast<VkShaderStageFlagBits>(AllowedStages | VK_SHADER_STAGE_COMPUTE_BIT);
-}
-
-void DescriptorSetVk::AddBinding(uint32_t binding, DescriptorType type)
-{
-	VkDescriptorType vkType = RenderUtils::DescriptorTypeToVulkan(type);
-
-	LayoutBuilder.AddBinding(0, vkType);
-}
-
-void DescriptorSetVk::BuildLayout()
-{
-	Layout = LayoutBuilder.Build(AllowedStages);
-
-	DescriptorSet = rendersystem->GetDescriptorPool().Build(rendersystem->GetDevice(), Layout);
-
-	LayoutBuilder.Clear();
-
-	ImageBindings.clear();
-}
-
-void DescriptorSetVk::BindImage(uint32_t binding, HImageView img)
-{
-	VkDescriptorImageInfo imgInfo{};
-	imgInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-	imgInfo.imageView = static_cast<VkImageView>(img);
-
-	ImageBindings.push_back({ binding, imgInfo });
-}
-
-void DescriptorSetVk::BuildSet()
-{
-	for (auto &imgBind : ImageBindings)
-	{
-		VkWriteDescriptorSet imageWrite = {};
-		imageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		imageWrite.pNext = nullptr;
-
-		imageWrite.dstBinding = imgBind.binding;
-		imageWrite.dstSet = DescriptorSet;
-		imageWrite.descriptorCount = 1;
-		imageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		imageWrite.pImageInfo = &imgBind.dscImgInfo;
-
-		DescriptorBindings.push_back(imageWrite);
-	}
-
-	vkUpdateDescriptorSets(rendersystem->GetDevice(), DescriptorBindings.size(), DescriptorBindings.data(), 0, nullptr);
 }

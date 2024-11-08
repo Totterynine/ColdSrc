@@ -190,12 +190,27 @@ VkPipelineBindPoint RenderUtils::PipelineBindPointToVulkan(PipelineBindPoint typ
     }
 }
 
-void RenderUtils::DescriptorLayoutBuilder::AddBinding(uint32_t binding, VkDescriptorType type)
+VkShaderStageFlagBits RenderUtils::ShaderStageToVulkan(ShaderStage stages)
+{
+    VkShaderStageFlagBits flags = { };
+
+    if (stages & ShaderStage::Vertex)
+        flags = static_cast<VkShaderStageFlagBits>(flags | VK_SHADER_STAGE_VERTEX_BIT);
+    if (stages & ShaderStage::Pixel)
+        flags = static_cast<VkShaderStageFlagBits>(flags | VK_SHADER_STAGE_FRAGMENT_BIT);
+    if (stages & ShaderStage::Compute)
+        flags = static_cast<VkShaderStageFlagBits>(flags | VK_SHADER_STAGE_COMPUTE_BIT);
+
+    return flags;
+}
+
+void RenderUtils::DescriptorLayoutBuilder::AddBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlagBits stage)
 {
     VkDescriptorSetLayoutBinding newbind{};
     newbind.binding = binding;
     newbind.descriptorCount = 1;
     newbind.descriptorType = type;
+    newbind.stageFlags = stage;
 
     Bindings.push_back(newbind);
 }
@@ -205,12 +220,8 @@ void RenderUtils::DescriptorLayoutBuilder::Clear()
     Bindings.clear();
 }
 
-VkDescriptorSetLayout RenderUtils::DescriptorLayoutBuilder::Build(VkShaderStageFlags shaderStages, void *next, VkDescriptorSetLayoutCreateFlags flags)
+VkDescriptorSetLayout RenderUtils::DescriptorLayoutBuilder::Build(void *next, VkDescriptorSetLayoutCreateFlags flags)
 {
-    for (auto& binding : Bindings) {
-        binding.stageFlags |= shaderStages;
-    }
-
     VkDescriptorSetLayoutCreateInfo info = { .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
     info.pNext = next;
 
