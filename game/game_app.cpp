@@ -66,7 +66,7 @@ public:
     }
     virtual void Shutdown()
     {
-
+        rendersys->Destroy();
     }
 
     // Here you can process Device inputs before frame begins.
@@ -135,7 +135,7 @@ public:
         rendersys->BindShader(circle_shader, PipelineBindPoint::Compute);
         rendersys->BindDescriptorSet(circle_shader_descriptor, PipelineBindPoint::Compute);
 
-        rendersys->Dispatch(1280 / 2, 720 / 2, 1);
+        rendersys->Dispatch(1280 / 16, 720 / 16, 1);
 
         rendersys->CopyRenderTargetToBackBuffer();
 

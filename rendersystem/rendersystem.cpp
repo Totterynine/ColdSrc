@@ -92,7 +92,6 @@ void RenderSystemVulkan::AttachWindow(void *window_handle, int width, int height
     ReleaseQueue.Push([&]() {
         vkb::destroy_surface(VulkanInstance, Device.Physical.surface);
         vkb::destroy_device(Device.Logical);
-        vkb::destroy_debug_utils_messenger(VulkanInstance, VulkanInstance.debug_messenger);
         });
 
     // initialize the memory allocator
@@ -121,6 +120,8 @@ void RenderSystemVulkan::AttachWindow(void *window_handle, int width, int height
         return;
     if (!InitDescriptorPool())
         return;
+
+    Initialized = true;
 }
 
 IRenderTarget* RenderSystemVulkan::CreateRenderTarget(ImageFormat fmt, int width, int height)
@@ -144,6 +145,8 @@ IDescriptorLayout* RenderSystemVulkan::BuildDescriptorLayout(uint32_t numEntries
 
     layout->Build();
 
+    AllocatedDescriptorLayouts.push_back(layout);
+
     return layout;
 }
 
@@ -157,7 +160,9 @@ IDescriptorSet* RenderSystemVulkan::BuildDescriptorSet(IDescriptorLayout* layout
 
 IShader* RenderSystemVulkan::CreateShader()
 {
-    return new ShaderVk();
+    ShaderVk* shader = new ShaderVk();
+    AllocatedShaders.push_back(shader);
+    return shader;
 }
 
 HShader RenderSystemVulkan::LoadShaderModule(const char* filepath)
@@ -260,7 +265,7 @@ void RenderSystemVulkan::ClearColor()
 
 void RenderSystemVulkan::SetRenderTarget(IRenderTarget *target)
 {
-    BoundRenderTarget = target;
+    BoundRenderTarget = static_cast<RenderTargetVk*>(target);
     Cmd_TransitionImageLayout(CommandBuffers[CurrentFrameIdx], GetBoundImage(), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 }
 
@@ -379,6 +384,21 @@ void RenderSystemVulkan::Dispatch(int groupSizeX, int groupSizeY, int groupSizeZ
 
 void RenderSystemVulkan::Destroy()
 {
+    vkDeviceWaitIdle(Device.Logical);
+
+    for (auto* shader : AllocatedShaders)
+    {
+        shader->Destroy();
+    }
+    for (auto* rendertarget : AllocatedRenderTargets)
+    {
+        rendertarget->Destroy();
+    }
+    for (auto* descriptor_layout : AllocatedDescriptorLayouts)
+    {
+        descriptor_layout->Destroy();
+    }
+
     ReleaseQueue.Release();
 }
 
@@ -445,9 +465,10 @@ bool RenderSystemVulkan::CreateSwapchain(int w, int h)
 
     CurrentWindow.SwapChain = swapResult.value();
 
-    ReleaseQueue.Push([&]() {
-        vkb::destroy_swapchain(CurrentWindow.SwapChain);
-        });
+    if(!Initialized)
+        ReleaseQueue.Push([&]() {
+            vkb::destroy_swapchain(CurrentWindow.SwapChain);
+            });
 
     return true;
 }
@@ -460,7 +481,6 @@ bool RenderSystemVulkan::RecreateSwapchain()
 
     for (auto backbuffer : BackBuffers)
     {
-        Device.Dispatch.destroyFramebuffer(backbuffer.Framebuffer, nullptr);
         vkDestroyImageView(Device.Logical, backbuffer.ImageView, nullptr);
     }
 
@@ -486,6 +506,14 @@ bool RenderSystemVulkan::CreateBackBufferObjects()
         BackBuffers[i].ImageView = image_views[i];
     }
 
+    if (!Initialized)
+        ReleaseQueue.Push([&]() {
+        for (int i = 0; i < BackBuffers.size(); ++i)
+        {
+            vkDestroyImageView(Device.Logical, BackBuffers[i].ImageView, nullptr);
+        }
+        });
+
     return true;
 }
 
@@ -502,11 +530,9 @@ bool RenderSystemVulkan::CreateCommandPool()
         return false; // failed to create command pool
     }
 
-    ReleaseQueue.Push([&]() {
-        for (int i = 0; CurrentWindow.SwapChain.image_count; ++i)
-        {
+    if (!Initialized)
+        ReleaseQueue.Push([&]() {
             vkDestroyCommandPool(Device.Logical, CommandPool, nullptr);
-        }
         });
 
     return true;
@@ -552,8 +578,9 @@ bool RenderSystemVulkan::CreateSyncObjects()
         }
     }
 
-    ReleaseQueue.Push([&]() {
-        for (int i = 0; CurrentWindow.SwapChain.image_count; ++i)
+    if (!Initialized)
+        ReleaseQueue.Push([&]() {
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
         {
             //destroy sync objects
             vkDestroyFence(Device.Logical, SwapChainSyncObjects[i].Fence, nullptr);
@@ -574,6 +601,8 @@ bool RenderSystemVulkan::InitDescriptorPool()
     };
 
     DescriptorPool.Init(Device.Logical, 10, sizes);
+
+    ReleaseQueue.Push([&]() { DescriptorPool.Destroy(Device.Logical); });
 
     return true;
 }

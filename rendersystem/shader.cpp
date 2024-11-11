@@ -33,6 +33,25 @@ void ShaderVk::BuildPipeline(IDescriptorLayout* layout)
 	}
 }
 
+void ShaderVk::Destroy()
+{
+	vkDestroyPipelineLayout(rendersystem->GetDevice(), shaderPipelineLayout, nullptr);
+	vkDestroyPipeline(rendersystem->GetDevice(), shaderPipeline, nullptr);
+
+	if (FragmentShader != VK_NULL_HANDLE)
+	{
+		vkDestroyShaderModule(rendersystem->GetDevice(), FragmentShader, nullptr);
+	}
+	if (VertexShader != VK_NULL_HANDLE)
+	{
+		vkDestroyShaderModule(rendersystem->GetDevice(), VertexShader, nullptr);
+	}
+	if (ComputeShader != VK_NULL_HANDLE)
+	{
+		vkDestroyShaderModule(rendersystem->GetDevice(), ComputeShader, nullptr);
+	}
+}
+
 void ShaderVk::BuildComputePipeline()
 {
 	VkPipelineLayoutCreateInfo computeLayout{};

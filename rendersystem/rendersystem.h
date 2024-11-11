@@ -4,6 +4,8 @@
 #include "vulkan_common.h"
 #include "utils.h"
 #include "shader.h"
+#include "rendertarget.h"
+#include "descriptorsets.h"
 
 #include "vk_mem_alloc.h"
 
@@ -131,6 +133,9 @@ private:
 
 	vkb::Instance VulkanInstance;
 
+	// Make sure we dont push items to release queue multiple times when recreating swapchain
+	bool Initialized = false;
+
 	struct RenderWindow
 	{
 		void *Handle = nullptr;
@@ -156,7 +161,6 @@ private:
 	{
 		VkImage Image;
 		VkImageView ImageView;
-		VkFramebuffer Framebuffer;
 	};
 	Array<BackbufferInfo> BackBuffers;
 
@@ -186,8 +190,10 @@ private:
 
 	VmaAllocator VulkanAllocator;
 
-	IRenderTarget* BoundRenderTarget = nullptr;
-	Array<IRenderTarget*> AllocatedRenderTargets;
+	RenderTargetVk* BoundRenderTarget = nullptr;
+	Array<RenderTargetVk*> AllocatedRenderTargets;
+	Array<ShaderVk*> AllocatedShaders;
+	Array<DescriptorLayoutVk*> AllocatedDescriptorLayouts;
 	RenderUtils::DescriptorPoolHelper DescriptorPool;
 
 	ShaderVk* BoundShader = nullptr;

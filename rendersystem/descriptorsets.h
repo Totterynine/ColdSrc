@@ -8,6 +8,8 @@ class DescriptorLayoutVk : public IDescriptorLayout
 public:
 	virtual void AddBinding(uint32_t binding, DescriptorType type, VkShaderStageFlagBits stage);
 	virtual void Build();
+	
+	void Destroy();
 
 	VkDescriptorSetLayout& GetLayout()
 	{

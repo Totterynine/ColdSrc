@@ -1,6 +1,7 @@
 #include "common_stl.h"
 #include "rendertarget.h"
 #include "utils.h"
+#include "rendersystem.h"
 
 void RenderTargetVk::Create(ImageFormat fmt, int width, int height)
 {

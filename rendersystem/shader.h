@@ -22,6 +22,8 @@ public:
 		return shaderPipelineLayout;
 	}
 
+	void Destroy();
+
 private:
 
 	void BuildComputePipeline();
@@ -32,7 +34,7 @@ private:
 
 	VkDescriptorSetLayout descriptorLayout;
 
-	VkShaderModule FragmentShader;
-	VkShaderModule VertexShader;
-	VkShaderModule ComputeShader;
+	VkShaderModule FragmentShader = VK_NULL_HANDLE;
+	VkShaderModule VertexShader = VK_NULL_HANDLE;
+	VkShaderModule ComputeShader = VK_NULL_HANDLE;
 };

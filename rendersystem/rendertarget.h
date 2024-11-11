@@ -1,6 +1,6 @@
 #pragma once
 #include "rendersystem/irendersystem.h"
-#include "rendersystem.h"
+#include "vulkan_common.h"
 
 class RenderTargetVk : public IRenderTarget
 {

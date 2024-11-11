@@ -15,6 +15,11 @@ void DescriptorLayoutVk::Build()
 	LayoutBuilder.Clear();
 }
 
+void DescriptorLayoutVk::Destroy()
+{
+	vkDestroyDescriptorSetLayout(rendersystem->GetDevice(), Layout, nullptr);
+}
+
 void DescriptorSetVk::Init(IDescriptorLayout *layout)
 {
 	DescriptorLayoutVk *vkLayout = static_cast<DescriptorLayoutVk*>(layout);
