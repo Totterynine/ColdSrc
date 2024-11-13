@@ -46,7 +46,7 @@ public:
 
 	virtual void AttachWindow(void *window_handle, int w, int h);
 
-	virtual IRenderTarget* CreateRenderTarget(ImageFormat fmt, int width, int height);
+	virtual IRenderTarget* CreateRenderTarget(BufferFormat fmt, int width, int height);
 	virtual IDescriptorLayout* BuildDescriptorLayout(uint32_t numEntries, DescriptorLayoutEntry* entries);
 	virtual IDescriptorSet* BuildDescriptorSet(IDescriptorLayout* layout);
 	virtual IShader* CreateShader();
@@ -84,16 +84,17 @@ public:
 	virtual void SetIndexBuffer(IIndexBuffer *buffer);
 
 	// Draw a primitive
-	virtual void DrawPrimitive(int primitive_type, int vertex_count);
+	virtual void DrawPrimitive(int first_vertex, int vertex_count);
 
 	// Draw indexed primitives
-	virtual void DrawIndexedPrimitives(int primitive_type, int index_count);
+	virtual void DrawIndexedPrimitives(int index_count);
 
 	virtual void CopyRenderTargetToBackBuffer();
 
 	// Present the render target to surface
 	virtual void Present();
 
+	// Compute Dispatch
 	virtual void Dispatch(int groupSizeX, int groupSizeY, int groupSizeZ);
 
 	// Destroy the rendering system
@@ -127,6 +128,7 @@ private:
 	bool InitDescriptorPool();
 
 	VkImage &GetBoundImage();
+	VkImageView& GetBoundImageView();
 
 	void Cmd_TransitionImageLayout(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout);
 	void Cmd_BlitImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize);

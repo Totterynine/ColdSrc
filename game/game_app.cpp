@@ -3,6 +3,8 @@
 #include "libcommon/module_lib.h"
 #include "SDL.h"
 
+#include "shaders/screen_triangle.h"
+
 #include <iostream>
 
 IRenderSystem *rendersys = nullptr;
@@ -40,7 +42,7 @@ public:
         rendersys->AttachWindow( &hwnd, 1280, 720 );
 
         // HDR Render target to support higher color values
-        rendertarget = rendersys->CreateRenderTarget(ImageFormat::RGBA16F, 1280, 720);
+        rendertarget = rendersys->CreateRenderTarget(BufferFormat::RGBA16F, 1280, 720);
 
         // Load shader module from file, get a new instance from rendersystem, give it our compute shader module
         HShader hardwareShader = rendersys->LoadShaderModule("circle_cs61.spv");
@@ -50,7 +52,7 @@ public:
         // Build shader input layout
         DescriptorLayoutEntry layout[] =
         {
-            {0, DescriptorType::Image, ShaderStage::Compute},
+            {0, DescriptorType::StorageImage, ShaderStage::Compute},
         };
         circle_shader_input_layout = rendersys->BuildDescriptorLayout(1, layout);
 
@@ -61,6 +63,10 @@ public:
         circle_shader_descriptor = rendersys->BuildDescriptorSet(circle_shader_input_layout);
         circle_shader_descriptor->BindImage(0, rendertarget->GetHardwareImageView());
         circle_shader_descriptor->Update();
+
+        screen_triangle = new ShaderScreenTriangle();
+
+        screen_triangle->Initialize();
 
         return true;
     }
@@ -132,6 +138,10 @@ public:
         rendersys->SetClearColor( clearClr );
         rendersys->ClearColor();
 
+        rendersys->BindShader(screen_triangle->GetRenderShader(), PipelineBindPoint::Graphics);
+
+        rendersys->DrawPrimitive(0, 3);
+
         rendersys->BindShader(circle_shader, PipelineBindPoint::Compute);
         rendersys->BindDescriptorSet(circle_shader_descriptor, PipelineBindPoint::Compute);
 
@@ -160,6 +170,8 @@ private:
     IShader* circle_shader;
     IDescriptorSet* circle_shader_descriptor;
     IDescriptorLayout* circle_shader_input_layout;
+
+    ShaderScreenTriangle* screen_triangle;
 
     SDL_Window* Window;
     bool IsMinimized = false;

@@ -1,4 +1,4 @@
-RWTexture2D<float> InTexture : register( u0 );
+RWTexture2D<float4> InTexture : register( u0 );
 
 float sdCircle( in float2 p, in float r ) 
 {
@@ -16,8 +16,14 @@ uint3 GTid : SV_GroupThreadID, uint Gidx : SV_GroupIndex )
     float circle = sdCircle(screenPos, 0.5f);
 
     float4 col = InTexture[DTid.xy];
+
     if(circle < 0.0f)
+    {
         col = float4(0.65f, 0.85f, 1.0f, 1.0f);
+        col *= 1.0 - exp(-6.0*abs(circle));
+        col *= 0.8 + 0.2*cos(150.0*circle);
+        col = lerp( col, 1.0f.xxxx, 1.0-smoothstep(0.0,0.01,abs(circle)) );
+    }
 
     InTexture[DTid.xy] = col;
 

@@ -1,58 +1,6 @@
 #pragma once
 #include "libcommon/module_lib.h"
-
-struct BlendState
-{
-    bool enable;
-    float src_factor, dst_factor;
-};
-
-struct DepthStencilState
-{
-    bool enable;
-    float depth_bias;
-};
-
-struct RasterizerState
-{
-    bool enable;
-    int cull_mode;
-};
-
-struct Viewport
-{
-    int x, y, w, h;
-};
-
-struct ScissorRectangle
-{
-    int x, y, w, h;
-};
-
-struct ColorFloat
-{
-    float r, g, b, a;
-};
-
-enum class ImageFormat : short
-{
-    Null = 0,
-    RGB8,
-    RGBA8,
-    RGBA16,
-    RGBA16F,
-    RGBA32F,
-};
-
-// Hardware image handles
-using HImage = void*;
-using HImageView = void*;
-
-// Hardware shader handle
-using HShader = void*;
-
-class IVertexBuffer;
-class IIndexBuffer;
+#include "rendersystem/rendersystem_types.h"
 
 class IRenderTarget
 {
@@ -63,67 +11,9 @@ public:
 
 };
 
-enum class ShaderType : unsigned char
-{
-    Null = 0,
-    Graphics,
-    Compute,
-};
-
-enum ShaderStage : unsigned char
-{
-    Null = 0,
-    Vertex = 0x01,
-    Pixel = 0x02,
-    Compute = 0x04,
-};
-
-enum class DescriptorType : short
-{
-    Buffer = 0,
-    Image,
-};
-
-enum class PipelineBindPoint : short
-{
-    Graphics = 0,
-    Compute
-};
-
-struct DescriptorLayoutEntry
-{
-    uint32_t Binding;
-    DescriptorType Type;
-    ShaderStage Stage;
-};
-
-class IDescriptorLayout
-{
-public:
-
-};
-
-class IDescriptorSet
-{
-public:
-    virtual void Init(IDescriptorLayout* layout) = 0;
-
-    virtual void BindImage(uint32_t binding, HImageView img) = 0;
-
-    virtual void Update() = 0;
-};
-
-class IShader
-{
-public:
-
-    virtual ShaderType GetType() = 0;
-
-    virtual void SetComputeModule(HShader csModule) = 0;
-    
-    virtual void BuildPipeline(IDescriptorLayout* layout) = 0;
-
-};
+class IShader;
+class IDescriptorLayout;
+class IDescriptorSet;
 
 class IRenderSystem : public IModule
 {
@@ -139,7 +29,7 @@ public:
     // Attach the rendering system to a window
     virtual void AttachWindow(void *window_handle, int w, int h) = 0;
 
-    virtual IRenderTarget* CreateRenderTarget(ImageFormat fmt, int width, int height) = 0;
+    virtual IRenderTarget* CreateRenderTarget(BufferFormat fmt, int width, int height) = 0;
     virtual IDescriptorLayout* BuildDescriptorLayout(uint32_t numEntries, DescriptorLayoutEntry* entries) = 0;
     virtual IDescriptorSet* BuildDescriptorSet(IDescriptorLayout *layout) = 0;
     virtual IShader* CreateShader() = 0;
@@ -178,10 +68,10 @@ public:
     virtual void SetIndexBuffer(IIndexBuffer *buffer) = 0;
 
     // Draw a primitive
-    virtual void DrawPrimitive(int primitive_type, int vertex_count) = 0;
+    virtual void DrawPrimitive(int first_vertex, int vertex_count) = 0;
 
     // Draw indexed primitives
-    virtual void DrawIndexedPrimitives(int primitive_type, int index_count) = 0;
+    virtual void DrawIndexedPrimitives(int index_count) = 0;
 
     virtual void CopyRenderTargetToBackBuffer() = 0;
 

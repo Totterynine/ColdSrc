@@ -3,9 +3,9 @@
 #include "utils.h"
 #include "rendersystem.h"
 
-void RenderTargetVk::Create(ImageFormat fmt, int width, int height)
+void RenderTargetVk::Create(BufferFormat fmt, int width, int height)
 {
-	renderFormat = RenderUtils::ImageFormatToVulkan(fmt);
+	renderFormat = RenderUtils::BufferFormatToVulkan(fmt);
 	imageExtent.width = width;
 	imageExtent.height = height;
 
@@ -44,12 +44,17 @@ HImage RenderTargetVk::GetHardwareImage()
 
 HImageView RenderTargetVk::GetHardwareImageView()
 {
-	return imageView;
+	return GetImageView();
 }
 
 VkImage& RenderTargetVk::GetImage()
 {
 	return renderImage;
+}
+
+VkImageView& RenderTargetVk::GetImageView()
+{
+	return imageView;
 }
 
 void RenderTargetVk::GetExtent(int& width, int& height)

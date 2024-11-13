@@ -124,7 +124,7 @@ void RenderSystemVulkan::AttachWindow(void *window_handle, int width, int height
     Initialized = true;
 }
 
-IRenderTarget* RenderSystemVulkan::CreateRenderTarget(ImageFormat fmt, int width, int height)
+IRenderTarget* RenderSystemVulkan::CreateRenderTarget(BufferFormat fmt, int width, int height)
 {
     RenderTargetVk* rt = new RenderTargetVk;
     rt->Create(fmt, width, height);
@@ -299,7 +299,9 @@ void RenderSystemVulkan::BindShader(IShader *shader, PipelineBindPoint point)
 {
     BoundShader = static_cast<ShaderVk*>(shader);
 
-    vkCmdBindPipeline(CommandBuffers[CurrentFrameIdx], RenderUtils::PipelineBindPointToVulkan(point), BoundShader->GetPipeline());
+    // Graphics pipeline is bound way further inside Draw scope
+    if(point != PipelineBindPoint::Graphics)
+        vkCmdBindPipeline(CommandBuffers[CurrentFrameIdx], RenderUtils::PipelineBindPointToVulkan(point), BoundShader->GetPipeline());
 }
 
 void RenderSystemVulkan::BindDescriptorSet(IDescriptorSet* set, PipelineBindPoint point)
@@ -317,11 +319,32 @@ void RenderSystemVulkan::SetIndexBuffer(IIndexBuffer *buffer)
 {
 }
 
-void RenderSystemVulkan::DrawPrimitive(int primitive_type, int vertex_count)
+void RenderSystemVulkan::DrawPrimitive(int first_vertex, int vertex_count)
 {
+    //begin a render pass  connected to our render target
+    VkRenderingAttachmentInfo colorAttachment = RenderUtils::attachment_info(GetBoundImageView(), nullptr, VK_IMAGE_LAYOUT_GENERAL);
+
+    VkRenderingInfo renderInfo = RenderUtils::rendering_info({ CurrentWindow.Width, CurrentWindow.Height }, &colorAttachment, nullptr);
+    vkCmdBeginRendering(CommandBuffers[CurrentFrameIdx], &renderInfo);
+
+    vkCmdBindPipeline(CommandBuffers[CurrentFrameIdx], RenderUtils::PipelineBindPointToVulkan(PipelineBindPoint::Graphics), BoundShader->GetPipeline());
+
+    // stub scissor for now
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent.width = CurrentWindow.Width;
+    scissor.extent.height = CurrentWindow.Height;
+
+    vkCmdSetScissor(CommandBuffers[CurrentFrameIdx], 0, 1, &scissor);
+
+    vkCmdDraw(CommandBuffers[CurrentFrameIdx], vertex_count, 1, first_vertex, 0);
+
+    vkCmdEndRendering(CommandBuffers[CurrentFrameIdx]);
+
 }
 
-void RenderSystemVulkan::DrawIndexedPrimitives(int primitive_type, int index_count)
+void RenderSystemVulkan::DrawIndexedPrimitives(int index_count)
 {
 }
 
@@ -389,14 +412,17 @@ void RenderSystemVulkan::Destroy()
     for (auto* shader : AllocatedShaders)
     {
         shader->Destroy();
+        delete shader;
     }
     for (auto* rendertarget : AllocatedRenderTargets)
     {
         rendertarget->Destroy();
+        delete rendertarget;
     }
     for (auto* descriptor_layout : AllocatedDescriptorLayouts)
     {
         descriptor_layout->Destroy();
+        delete descriptor_layout;
     }
 
     ReleaseQueue.Release();
@@ -616,6 +642,17 @@ VkImage& RenderSystemVulkan::GetBoundImage()
     }
     
     return BackBuffers[CurrentImageIdx].Image;
+}
+
+VkImageView& RenderSystemVulkan::GetBoundImageView()
+{
+    if (BoundRenderTarget)
+    {
+        RenderTargetVk* vkRT = static_cast<RenderTargetVk*>(BoundRenderTarget);
+        return vkRT->GetImageView();
+    }
+
+    return BackBuffers[CurrentImageIdx].ImageView;
 }
 
 void RenderSystemVulkan::Cmd_TransitionImageLayout(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)

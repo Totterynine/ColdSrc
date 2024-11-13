@@ -142,21 +142,96 @@ VkShaderModule RenderUtils::load_shader_module(VkDevice device, const char* file
     return shaderModule;
 }
 
-VkFormat RenderUtils::ImageFormatToVulkan(ImageFormat fmt)
+VkPipelineShaderStageCreateInfo RenderUtils::shader_stage_create_info(VkShaderStageFlagBits stage, VkShaderModule shader)
+{
+    VkPipelineShaderStageCreateInfo stageinfo{};
+    stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stageinfo.pNext = nullptr;
+    stageinfo.stage = stage;
+    stageinfo.module = shader;
+    stageinfo.pName = "main";
+
+    return stageinfo;
+}
+
+VkRenderingInfo RenderUtils::rendering_info(VkExtent2D renderExtent, VkRenderingAttachmentInfo* colorAttachment, VkRenderingAttachmentInfo* depthAttachment, uint32_t attachment_count)
+{
+    VkRenderingInfo renderInfo{};
+    renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderInfo.pNext = nullptr;
+
+    renderInfo.renderArea = VkRect2D{ VkOffset2D { 0, 0 }, renderExtent };
+    renderInfo.layerCount = 1;
+    renderInfo.colorAttachmentCount = attachment_count;
+    renderInfo.pColorAttachments = colorAttachment;
+    renderInfo.pDepthAttachment = depthAttachment;
+    renderInfo.pStencilAttachment = nullptr;
+
+    return renderInfo;
+}
+
+VkRenderingAttachmentInfo RenderUtils::attachment_info(VkImageView view, VkClearValue* clear, VkImageLayout layout)
+{
+    VkRenderingAttachmentInfo colorAttachment{};
+    colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAttachment.pNext = nullptr;
+
+    colorAttachment.imageView = view;
+    colorAttachment.imageLayout = layout;
+    colorAttachment.loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    if (clear) {
+        colorAttachment.clearValue = *clear;
+    }
+
+    return colorAttachment;
+}
+
+VkFormat RenderUtils::BufferFormatToVulkan(BufferFormat fmt)
 {
     switch (fmt)
     {
-    case ImageFormat::Null:
+    case BufferFormat::Null:
         return VK_FORMAT_A8_UNORM_KHR; // smallest i could find, does vulkan even have NULL format?
-    case ImageFormat::RGB8:
+    case BufferFormat::R8:
+        return VK_FORMAT_R8_UINT;
+    case BufferFormat::R16:
+        return VK_FORMAT_R16_UINT;
+    case BufferFormat::R32:
+        return VK_FORMAT_R32_UINT;
+    case BufferFormat::R16F:
+        return VK_FORMAT_R16_SFLOAT;
+    case BufferFormat::R32F:
+        return VK_FORMAT_R32_SFLOAT;
+    case BufferFormat::RG8:
+        return VK_FORMAT_R8G8_UINT;
+    case BufferFormat::RG16:
+        return VK_FORMAT_R16G16_UINT;
+    case BufferFormat::RG32:
+        return VK_FORMAT_R32G32_UINT;
+    case BufferFormat::RG16F:
+        return VK_FORMAT_R16G16_SFLOAT;
+    case BufferFormat::RG32F:
+        return VK_FORMAT_R32G32_SFLOAT;
+    case BufferFormat::RGB8:
         return VK_FORMAT_R8G8B8_UINT;
-    case ImageFormat::RGBA8:
+    case BufferFormat::RGB16:
+        return VK_FORMAT_R16G16B16_UINT;
+    case BufferFormat::RGB32:
+        return VK_FORMAT_R32G32B32_UINT;
+    case BufferFormat::RGB16F:
+        return VK_FORMAT_R16G16B16_SFLOAT;
+    case BufferFormat::RGB32F:
+        return VK_FORMAT_R32G32B32_SFLOAT;
+    case BufferFormat::RGBA8:
         return VK_FORMAT_R8G8B8A8_UINT;
-    case ImageFormat::RGBA16:
+    case BufferFormat::RGBA16:
         return VK_FORMAT_R16G16B16A16_UINT;
-    case ImageFormat::RGBA16F:
+    case BufferFormat::RGBA32:
+        return VK_FORMAT_R32G32B32A32_UINT;
+    case BufferFormat::RGBA16F:
         return VK_FORMAT_R16G16B16A16_SFLOAT;
-    case ImageFormat::RGBA32F:
+    case BufferFormat::RGBA32F:
         return VK_FORMAT_R32G32B32A32_SFLOAT;
     default:
         assert(0);
@@ -168,9 +243,11 @@ VkDescriptorType RenderUtils::DescriptorTypeToVulkan(DescriptorType type)
 {
     switch (type)
     {
-    case DescriptorType::Buffer:
+    case DescriptorType::ConstantBuffer :
+        return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    case DescriptorType::StorageBuffer:
         return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    case DescriptorType::Image:
+    case DescriptorType::StorageImage:
         return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
     default:
         return VK_DESCRIPTOR_TYPE_MAX_ENUM;
@@ -204,6 +281,63 @@ VkShaderStageFlagBits RenderUtils::ShaderStageToVulkan(ShaderStage stages)
     return flags;
 }
 
+VkPrimitiveTopology RenderUtils::PrimitiveTopologyToVulkan(PrimitiveTopology topology)
+{
+    switch (topology)
+    {
+    case Points:
+        return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+    case Lines:
+        return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    case LineStrip:
+        return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+    case Triangles:
+        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    default:
+        return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
+    }
+}
+
+VkPolygonMode RenderUtils::PolygonModeToVulkan(PolygonMode mode)
+{
+    switch (mode)
+    {
+    case Fill:
+        return VK_POLYGON_MODE_FILL;
+    case Line:
+        return VK_POLYGON_MODE_LINE;
+    case Point:
+        return VK_POLYGON_MODE_POINT;
+    default:
+        return VK_POLYGON_MODE_MAX_ENUM;
+    }
+}
+
+VkCullModeFlagBits RenderUtils::CullModeFlagsToVulkan(CullModeFlags flags)
+{
+    VkCullModeFlagBits flag_bits = VK_CULL_MODE_NONE;
+
+    if (flags & CullModeFlags::Front)
+        flag_bits = static_cast<VkCullModeFlagBits>(flag_bits | VK_CULL_MODE_FRONT_BIT);
+    if (flags & CullModeFlags::Back)
+        flag_bits = static_cast<VkCullModeFlagBits>(flag_bits | VK_CULL_MODE_BACK_BIT);
+
+    return flag_bits;
+}
+
+VkFrontFace RenderUtils::PolygonWindingToVulkan(PolygonWinding winding)
+{
+    switch (winding)
+    {
+    case CounterClockwise:
+        return VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    case Clockwise:
+        return VK_FRONT_FACE_CLOCKWISE;
+    default:
+        return VK_FRONT_FACE_MAX_ENUM;
+    }
+}
+
 void RenderUtils::DescriptorLayoutBuilder::AddBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlagBits stage)
 {
     VkDescriptorSetLayoutBinding newbind{};
@@ -233,4 +367,111 @@ VkDescriptorSetLayout RenderUtils::DescriptorLayoutBuilder::Build(void *next, Vk
     vkCreateDescriptorSetLayout(rendersystem->GetDevice(), &info, nullptr, &set);
 
     return set;
+}
+
+void RenderUtils::GraphicsPipelineBuilder::SetShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader)
+{
+    Stages.clear();
+
+    Stages.push_back(RenderUtils::shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, vertexShader));
+    Stages.push_back(RenderUtils::shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader));
+}
+
+void RenderUtils::GraphicsPipelineBuilder::SetTopology(VkPrimitiveTopology topology)
+{
+    InputAssembly.topology = topology;
+    InputAssembly.primitiveRestartEnable = VK_FALSE;
+}
+
+void RenderUtils::GraphicsPipelineBuilder::SetPolygonMode(VkPolygonMode polygonMode)
+{
+    Rasterizer.polygonMode = polygonMode;
+}
+
+void RenderUtils::GraphicsPipelineBuilder::SetCullMode(VkCullModeFlagBits cullFlags, VkFrontFace frontFace)
+{
+    Rasterizer.cullMode = cullFlags;
+    Rasterizer.frontFace = frontFace;
+}
+
+void RenderUtils::GraphicsPipelineBuilder::Clear()
+{
+    InputAssembly = { .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+    Rasterizer = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+    ColorBlendAttachment = {};
+    Multisampling = { .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+    PipelineLayout = {};
+    DepthStencil = { .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
+    RenderInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+
+    // Default to no MSAA
+    Multisampling.sampleShadingEnable = VK_FALSE;
+    Multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    Multisampling.minSampleShading = 1.0f;
+    Multisampling.pSampleMask = nullptr;
+    Multisampling.alphaToCoverageEnable = VK_FALSE;
+    Multisampling.alphaToOneEnable = VK_FALSE;
+
+    // default write mask, disable blending (for now)
+    ColorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    ColorBlendAttachment.blendEnable = VK_FALSE;
+
+    Rasterizer.lineWidth = 1.0f;
+
+    Stages.clear();
+}
+
+VkPipeline RenderUtils::GraphicsPipelineBuilder::Build(VkDevice device)
+{
+    // make viewport state from our stored viewport and scissor.
+    VkPipelineViewportStateCreateInfo viewportState = {};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.pNext = nullptr;
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+
+    // dummy color blending. We arent using transparent objects (yet)
+    VkPipelineColorBlendStateCreateInfo colorBlending = {};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.pNext = nullptr;
+
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.logicOp = VK_LOGIC_OP_COPY;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &ColorBlendAttachment;
+
+    // dummy VertexInputStateCreateInfo, we have no need for it
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+
+    // build the pipeline create structure
+    VkGraphicsPipelineCreateInfo pipelineInfo = { .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+    pipelineInfo.pNext = &RenderInfo;
+
+    pipelineInfo.stageCount = (uint32_t)Stages.size();
+    pipelineInfo.pStages = Stages.data();
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &InputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &Rasterizer;
+    pipelineInfo.pMultisampleState = &Multisampling;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDepthStencilState = &DepthStencil;
+    pipelineInfo.layout = PipelineLayout;
+
+    VkDynamicState state[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    VkPipelineDynamicStateCreateInfo dynamicInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+    dynamicInfo.pDynamicStates = &state[0];
+    dynamicInfo.dynamicStateCount = 2;
+
+    pipelineInfo.pDynamicState = &dynamicInfo;
+
+    VkPipeline newPipeline;
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS) 
+    {
+        return VK_NULL_HANDLE; // failed to create graphics pipeline
+    }
+    else 
+    {
+        return newPipeline;
+    }
 }
